@@ -1,0 +1,21 @@
+#!/bin/sh
+# crt-gen - generate a single-pass Hyprland screen shader from a preset.
+# usage: crt-gen [preset.conf] [key=value ...] > out.frag
+# Looks for the shader sources next to this script (../shaders) or in $HYPRCRT_SHADERS.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+shaders=${HYPRCRT_SHADERS:-$here/../shaders}
+template=$shaders/single/template.frag
+common=$shaders/common.glsl
+[ -f "$template" ] && [ -f "$common" ] || { echo "crt-gen: shader sources not found in $shaders" >&2; exit 1; }
+
+look=$("$here/crt-look" "$@")
+defines=$(printf '%s\n' "$look" | awk -F= '
+    /^(CURVE|MASK|FLAT_LINES)=/ { printf "#define %s %d\n", $1, $2; next }
+    /^(LINES|GLOW|GAMMA_KNOB|SHARP|GLOW_R|GLOW_G|GLOW_B|GLOW_IN|GAMMA_OUT)=/ { printf "// %s = %s\n", $1, $2; next }
+    { printf "#define %s %s\n", $1, $2 }')
+
+awk -v defines="$defines" -v commonfile="$common" '
+    /^\/\/@DEFINES@/ { print defines; next }
+    /^\/\/@COMMON@/  { while ((getline line < commonfile) > 0) print line; close(commonfile); next }
+    { print }' "$template"

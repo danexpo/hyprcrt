@@ -1,0 +1,104 @@
+// hyprcrt Look.hpp - the six knobs and the numbers they make. Mirrors tools/crt-look exactly;
+// change both together. MIT (c) 2026 Dan Expo.
+#pragma once
+#include <algorithm>
+#include <string>
+
+struct SKnobs {
+    int   curve     = 0; // 0/1: the curved glass, vignette and corners
+    int   lines     = 3; // 0..4: scanline depth, 0 flat
+    int   mask      = 1; // 0 none, 1 aperture grille, 2 slot mask, 3 shadow mask
+    int   glow      = 2; // 0..4: halation and afterglow
+    int   gamma     = 1; // 0..4: output gamma 2.0 2.2 2.4 2.6 2.8
+    int   sharp     = 3; // 0..4: the beam's horizontal spot, soft to sharp
+    int   maskPitch = 1; // 1..3 physical px per stripe
+    float gain      = 1.f;
+    bool  textsafe  = true;
+};
+
+struct SLook {
+    int   curve = 0, lines = 0, mask = 0, glow = 0;
+    float hardPix = 0, hardPixR = 0;
+    float sigDark = 0, sigBright = 0, boostCap = 0;
+    bool  flatLines = false;
+    float maskLight = 1, maskDark = 1, slotDim = 0.55f, maskPitch = 1;
+    float haloAmt = 0, glowIn = 0, glowR = 0.55f, glowG = 0.50f, glowB = 0.33f;
+    float warpX = 0, warpY = 0, vignette = 0;
+    float gammaOut = 2.2f, invGamma = 1.f / 2.2f;
+    float gain = 1.f;
+};
+
+inline SLook computeLook(SKnobs k, int pitch) {
+    static const float hard[5] = {-1.6f, -2.6f, -4.0f, -6.0f, -8.0f};
+    static const float sigd[5] = {2.0f, 0.44f, 0.38f, 0.32f, 0.28f};
+    static const float cap[5]  = {1.0f, 1.15f, 1.22f, 1.28f, 1.34f};
+    static const float halo[5] = {0.0f, 0.05f, 0.09f, 0.14f, 0.20f};
+    static const float gin[5]  = {0.0f, 0.03f, 0.05f, 0.07f, 0.10f};
+    static const float gam[5]  = {2.0f, 2.2f, 2.4f, 2.6f, 2.8f};
+
+    k.lines     = std::clamp(k.lines, 0, 4);
+    k.glow      = std::clamp(k.glow, 0, 4);
+    k.gamma     = std::clamp(k.gamma, 0, 4);
+    k.sharp     = std::clamp(k.sharp, 0, 4);
+    k.mask      = std::clamp(k.mask, 0, 3);
+    k.maskPitch = std::clamp(k.maskPitch, 1, 3);
+    k.curve     = k.curve ? 1 : 0;
+    if (k.textsafe && pitch < 2) {
+        k.lines = 0;
+        k.mask  = 0;
+    }
+
+    SLook L;
+    L.curve     = k.curve;
+    L.lines     = k.lines;
+    L.mask      = k.mask;
+    L.glow      = k.glow;
+    L.hardPix   = hard[k.sharp];
+    L.hardPixR  = L.hardPix * (k.sharp <= 1 ? 0.6f : 0.85f);
+    L.sigDark   = sigd[k.lines];
+    L.sigBright = k.lines ? sigd[k.lines] + 0.12f : 2.0f;
+    L.boostCap  = cap[k.lines];
+    L.flatLines = L.sigDark >= 1.0f;
+    float ml = 1.f, md = 1.f;
+    if (k.mask == 1) {
+        ml = 1.30f;
+        md = 0.76f;
+    } else if (k.mask == 2 || k.mask == 3) {
+        ml = 1.26f;
+        md = 0.80f;
+    }
+    const float mean = (ml + 2.f * md) / 3.f;
+    float       mg   = k.mask ? 1.f / mean : 1.f;
+    L.slotDim        = 0.55f;
+    if (k.mask == 2)
+        mg /= (3.f + L.slotDim) / 4.f;
+    L.maskLight = ml * mg;
+    L.maskDark  = md * mg;
+    L.maskPitch = static_cast<float>(k.maskPitch);
+    L.haloAmt   = halo[k.glow];
+    L.glowIn    = gin[k.glow];
+    if (k.curve) {
+        L.warpX    = 0.031f;
+        L.warpY    = 0.041f;
+        L.vignette = 0.22f;
+    }
+    L.gammaOut = gam[k.gamma];
+    L.invGamma = 1.f / L.gammaOut;
+    L.gain     = std::clamp(k.gain, 0.25f, 4.f);
+    return L;
+}
+
+// the presets: curve, lines, mask, glow, gamma, sharp
+inline bool applyPreset(const std::string& name, SKnobs& k) {
+    if (name == "plain") {
+        k.curve = 0; k.lines = 0; k.mask = 0; k.glow = 0; k.gamma = 1; k.sharp = 4;
+    } else if (name == "scanlines") {
+        k.curve = 0; k.lines = 3; k.mask = 0; k.glow = 1; k.gamma = 1; k.sharp = 4;
+    } else if (name == "monitor") {
+        k.curve = 0; k.lines = 3; k.mask = 1; k.glow = 2; k.gamma = 1; k.sharp = 3;
+    } else if (name == "television") {
+        k.curve = 1; k.lines = 2; k.mask = 2; k.glow = 3; k.gamma = 1; k.sharp = 1;
+    } else
+        return false;
+    return true;
+}

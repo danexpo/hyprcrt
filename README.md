@@ -1,0 +1,221 @@
+# hyprcrt
+
+A system-wide CRT filter for Hyprland, packaged as an Omarchy plugin and usable on plain Hyprland.
+
+It is the tube model from [an-earlier-project](../an-earlier-project) (`crt.c`) and its GPU port in an-earlier-project,
+applied to the whole screen: energy-conserving scanlines whose beam fattens with brightness, an
+aperture-grille / slot / shadow phosphor mask with the mean folded back to one, halation, a phosphor
+afterglow trail, per-gun sharpness (red bleed), gamma, and Lottes' curved glass with vignette and
+rounded corners. Four presets (Plain, Scanlines, Monitor, Television) and six knobs.
+
+| Plain | Scanlines | Monitor | Television |
+|---|---|---|---|
+| ![](docs/previews/plain.png) | ![](docs/previews/scanlines.png) | ![](docs/previews/monitor.png) | ![](docs/previews/television.png) |
+
+The same test card through the four presets at pitch 3 (`docs/previews/`, rendered offscreen by
+`tests/shadercheck`); `docs/previews/monitor_zoom.png` is the Monitor preset at 3× so you can see
+the mask and the beam.
+
+Two modes, one product:
+
+| | Lite | Full |
+|---|---|---|
+| How | Hyprland's built-in `decoration:screen_shader`, one generated fragment pass | A Hyprland plugin (`plugin/`) that runs a seven-pass chain at the end of every frame |
+| Needs | nothing to build | a prebuilt library for your Hyprland (downloaded), or a one-minute build (`base-devel`) |
+| Afterglow, real halation | no (approximated from the beam taps) | yes |
+| Scope | whole screen | fullscreen windows and windowed media players (default), whole desktop, games, matching windows |
+| Live knobs | yes (regenerates the shader) | yes |
+| GPU cost at 3440×1440 (RX 6900 XT) | 0.17 ms per frame | 0.19–0.71 ms per frame, only on frames that change |
+| Added display latency | none | none |
+
+Both modes are driven by the same command, `bin/hyprcrt`, the same Omarchy bar widget and the same
+keybindings; the plugin is picked up automatically once it is installed.
+
+## Install
+
+### Omarchy 4 (Hyprland 0.56)
+
+```sh
+omarchy plugin add https://github.com/danexpo/hyprcrt --enable
+```
+
+That gives you the bar button (right-click toggles, middle-click cycles presets, left-click opens
+the panel) in lite mode, plus a **Style > CRT filter** menu. For full mode press **Build the
+full-mode plugin** in the panel or run
+
+```sh
+~/.config/omarchy/plugins/danexpo.crt/bin/hyprcrt install --no-load
+```
+
+This installs a prebuilt `hyprcrt.so` for the exact Hyprland commit you are running when the
+project's releases have one (checked against `SHA256SUMS`), and compiles it only when they do not.
+The plugin loads at the next Hyprland start; to load it right away run `hyprcrt plugin load`.
+
+Keybindings are opt-in: add this line to `~/.config/hypr/bindings.lua` to get `SUPER+ALT+C`
+(toggle), `SUPER+ALT+SHIFT+C` (next preset), `SUPER+ALT+X` (hold to compare with the plain
+picture) and `SUPER+CTRL+ALT+C` (panel):
+
+```lua
+pcall(dofile, os.getenv("HOME") .. "/.config/omarchy/plugins/danexpo.crt/omarchy-plugin/bindings.lua")
+```
+
+### Plain Hyprland
+
+```sh
+git clone https://github.com/danexpo/hyprcrt ~/.local/share/hyprcrt-src
+~/.local/share/hyprcrt-src/bin/hyprcrt install --no-load --no-autostart   # links ~/.local/bin/hyprcrt
+```
+
+Then source the loader and, if you like, the example keybindings from `~/.config/hypr/hyprland.lua`:
+
+```lua
+dofile(os.getenv("HOME") .. "/.local/share/hyprcrt-src/contrib/hyprland/hyprcrt.lua")
+```
+
+`contrib/waybar/` has a Waybar module (click toggles, right-click cycles, scroll changes the
+scanline depth). `hyprcrt` needs `bash`, `python3` and `hyprctl`; `hyprcrt shot` wants ImageMagick
+and, in lite mode, `grim`.
+
+### Arch packages
+
+`packaging/aur/PKGBUILD` builds `hyprcrt-git` with the plugin in `/usr/lib/hyprcrt/` and everything
+else under `/usr/share/hyprcrt/`; `hyprpm add https://github.com/danexpo/hyprcrt` works too
+(`hyprpm.toml`). Both compile against the installed Hyprland headers.
+
+### After a Hyprland update
+
+A Hyprland plugin only loads into the exact Hyprland commit it was built for. Install the hook and
+`omarchy update` fetches or rebuilds it automatically when Hyprland changed (the new library loads
+after the next restart; until then you are in lite mode, not without a filter):
+
+```sh
+omarchy hook install post-update ~/.config/omarchy/plugins/danexpo.crt/omarchy-plugin/hooks/hyprcrt-rebuild
+```
+
+If you update with pacman directly, `omarchy-plugin/hooks/hyprcrt-rebuild.hook` (copied to
+`/etc/pacman.d/hooks/`) marks the plugin stale and the shell tells you to run `hyprcrt build`.
+
+### If Hyprland ever crashes with the plugin loaded
+
+The plugin records the compositor's pid while it is loaded. If Hyprland leaves a crash report for
+that pid, the loader keeps the plugin off at the next start, falls back to lite mode and tells you
+(the panel shows the reason; so does `hyprcrt plugin status`). `hyprcrt plugin enable` lifts it.
+Please attach `~/.cache/hyprland/hyprlandCrashReport<pid>.txt` to a bug report.
+
+## Using it
+
+```sh
+hyprcrt status                 # JSON: mode, enabled, preset, knobs, per-monitor GPU time
+hyprcrt toggle | on | off
+hyprcrt bypass on|off|toggle   # hold-to-compare: the plain picture, nothing forgotten
+hyprcrt preset television      # plain | scanlines | monitor | television | custom
+hyprcrt cycle                  # next preset
+hyprcrt demo scanlines 10      # try a preset for ten seconds, then back to how it was
+hyprcrt set lines 2            # curve 0/1 · lines 0-4 · mask 0-3 · glow 0-4 · gamma 0-4 · sharp 0-4
+hyprcrt set lines +1           # relative, wraps
+hyprcrt set pitch 3            # physical pixels per virtual scanline; 0 = auto
+hyprcrt set pitch_fullscreen 2 # auto pitch for fullscreen video/browsers: 3 = 480-line tube, 2 keeps small text readable
+hyprcrt set scope games        # auto | all | fullscreen | games | rules | window | off   (full mode)
+hyprcrt set match '^retroarch$' # class/title regex for scope rules and window          (full mode)
+hyprcrt set media '^(mpv|vlc)$' # what scope auto treats as a picture when windowed       (full mode)
+hyprcrt shot ~/crt.png         # the filtered screen as an image (plain screenshots are unfiltered)
+hyprcrt power auto             # low-power profile while a battery is discharging (on|off to force)
+hyprcrt plugin status          # built for which Hyprland, loaded, disabled by the crash guard?
+hyprcrt dump /tmp/frame.ppm    # the next filtered frame, exactly as sent to the display (full mode)
+```
+
+Full-mode defaults can also live in your Hyprland Lua config:
+
+```lua
+hl.config({
+  plugin = {
+    crt = {
+      enabled = true,
+      preset = "monitor",        -- or "custom" with the six knobs below
+      scope = "auto",            -- fullscreen windows and windowed media players get the tube, the desktop stays crisp
+      media = "^(mpv|vlc|kodi)$",-- optional: your own list of windowed apps that are a picture (default covers players, emulators)
+      pitch = 0,                 -- auto: a 2x/3x-scaled fullscreen game gets 2/3-pixel scanlines,
+      pitch_fullscreen = 3,      -- any other fullscreen window (video, a browser) gets this: a 480-line tube on 1440p,
+      textsafe = true,           -- and the plain desktop gets pitch 1 with no lines and no mask, so text stays readable
+      low_power = false,         -- half-resolution halation and a short afterglow, for laptops on battery
+      block_scanout = true,      -- keep fullscreen clients composited so they are filtered
+      halo_half = true,          -- halation at half resolution when pitch is 1
+      glow_frames = 12,          -- extra frames rendered after the picture settles, for the trail
+    },
+  },
+})
+if hl.plugin.crt then hl.plugin.crt.preset("television") end
+```
+
+### Pitch, or what a scanline is on a desktop
+
+The games ran at 256×192 or 427×240 and were scaled by an integer factor; the filter drew one
+scanline per source row. On a 3440×1440 desktop there is no source row, so `pitch` says how many
+physical pixels make one virtual scanline. `auto` uses the integer factor of a fullscreen window's
+buffer (a 640×480 game on a 1440-line monitor is a clean 3×, so pitch 3), `pitch_fullscreen` (3) for
+any other fullscreen window such as a video player or a browser, and 1 on the plain desktop. Only on
+the desktop does the text-safe rule turn lines and mask off, leaving the beam softening, halation,
+glow and glass; a fullscreen picture always gets the full tube. If small UI text in a fullscreen
+browser bothers you, `pitch_fullscreen = 2` is the readable compromise.
+
+## What is in the tree
+
+```
+bin/hyprcrt                 the command; lite/full switch, state, demo, shot, guard, notifications
+lua/loader.lua              sourced by Hyprland at start: full or lite mode, crash-loop guard
+shaders/common.glsl         the tube model (shared by both modes)
+shaders/single/template.frag lite mode: one pass, knobs baked in by tools/crt-gen
+shaders/passes/*.frag       full mode: down, glow, halo_h, halo_v, beam, scan, glass
+presets/*.conf              the four presets
+tools/crt-look, crt-gen     knobs → numbers, numbers → shader
+tools/crt-fetch             download the prebuilt plugin for the installed Hyprland, verify, install
+tools/crt-build             fetch or build, install, wire up the loader
+plugin/                     the Hyprland plugin (C++23, MIT)
+omarchy-plugin/             CrtPanel.qml (bar widget + panel), Service.qml, Model.js, hooks, menu, bindings, previews
+contrib/hyprland, waybar    plain-Hyprland config snippet, Waybar module
+packaging/aur               PKGBUILD
+tests/shadercheck.c         compile a screen shader offscreen, run an image through it (previews, lite-mode shots)
+tests/run-nested.sh         a nested Hyprland with the freshly built plugin (never test in the live session)
+tests/run-loader-test.sh    a nested Hyprland wired only through the loader, for the crash-loop guard
+bench/bench.c               the GPU cost benchmark behind the numbers above
+docs/PLAN.md                the feasibility analysis and plan this was built from
+docs/previews/              the presets on a test card
+```
+
+## Testing
+
+```sh
+make -C plugin all -j                 # needs the hyprland package headers
+tests/run-nested.sh auto monitor 0 &  # a nested Hyprland with the plugin loaded (scope, preset, pitch)
+hyprctl -i <nested-signature> crt status
+hyprctl -i <nested-signature> crt dump /tmp/out.ppm    # look at the filtered frame
+tests/run-loader-test.sh &            # the loader alone; kill -9 it and add a crash report to see the guard
+```
+
+Never load an untested build into the live session: a plugin fault takes the whole compositor down.
+`tests/shadercheck.c` also renders an-earlier-project's verification frames through the lite shader;
+the Monitor preset matches the game's own output, the Television preset differs only in the
+halation, which the single pass can only approximate.
+
+## Notes and limits
+
+- Screenshots and screen recordings are unfiltered in both modes (Hyprland copies the frame before
+  the screen shader, and screen capture renders through its own path). `hyprcrt shot` gives you the
+  filtered frame as an image.
+- The hardware cursor is on its own plane and stays crisp; set `cursor:no_hardware_cursors = true`
+  in Hyprland if you want it filtered too.
+- Curvature is a non-local remap. Lite mode turns damage tracking off while it is on (full frames,
+  0.17 ms each on this GPU); full mode always renders full frames while the filter is active on an
+  output, and only when something changed or the afterglow is still decaying.
+- Direct scanout (off by default in Omarchy) bypasses any compositor filter. Full mode blocks it while
+  enabled; lite mode cannot.
+- HDR outputs are untested; the plugin sees the frame before colour management.
+- The cost numbers above are from one desktop GPU. If you run this on integrated graphics or a
+  laptop, `hyprcrt status` reports GPU milliseconds per monitor when `stats = true`; an issue with
+  those numbers, your GPU and resolution helps set the low-power defaults.
+
+## Licence
+
+MIT. See `NOTICES` for what was borrowed (Lottes' public-domain shader for the warp, spot and mask
+multipliers) and, more importantly, what was not: no code from the GPL CRT shaders in the libretro
+collection is included.

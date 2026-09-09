@@ -1,0 +1,17 @@
+hyprcrt - third-party notices
+
+The tube model (energy-conserving scanlines with a brightness-dependent beam,
+phosphor mask with the mean folded back to one, halation, afterglow, curved
+glass) is the author's own, first written for an-earlier-project (src/platform/sdl2/crt.c)
+and ported to GPU passes for an-earlier-project. Both MIT, (c) 2026 Dan Expo.
+
+The screen warp, the exp2(hard * d^2) beam spot and the light/dark phosphor
+mask multipliers follow the public-domain CRT shader by Timothy Lottes:
+  "PUBLIC DOMAIN CRT STYLED SCAN-LINE SHADER by Timothy Lottes ...
+   Please take and use, change, or whatever."
+
+Hyprland (headers this plugin compiles against): BSD-3-Clause, (c) 2022-2026 vaxerski.
+Omarchy (shell plugin API and script conventions): MIT, (c) David Heinemeier Hansson.
+
+No code from GPL-licensed CRT shaders (guest-advanced, CRT-Royale, crt-geom,
+crt-pi, crt-easymode, crt-aperture, crt-consumer) is included.

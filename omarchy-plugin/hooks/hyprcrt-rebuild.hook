@@ -1,0 +1,14 @@
+# pacman hook (optional, for people who update with pacman directly instead of `omarchy update`).
+# Install: sudo cp hyprcrt-rebuild.hook /etc/pacman.d/hooks/
+# It only marks the plugin as stale; the actual rebuild runs as the user, from the Omarchy
+# post-update hook or from `hyprcrt build`, because pacman hooks run as root without the session.
+[Trigger]
+Operation = Upgrade
+Operation = Install
+Type = Package
+Target = hyprland
+
+[Action]
+Description = hyprcrt: Hyprland changed, the CRT plugin needs a rebuild (run: hyprcrt build)
+When = PostTransaction
+Exec = /bin/sh -c 'for h in /home/*; do d="$h/.local/share/hyprcrt"; [ -f "$d/hyprcrt.so" ] && touch "$d/rebuild-needed" && chown --reference="$h" "$d/rebuild-needed" 2>/dev/null; done; exit 0'

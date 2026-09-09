@@ -1,0 +1,15 @@
+{
+  // hyprcrt entries for the Omarchy menu. Merge these keys into
+  // ~/.config/omarchy/extensions/omarchy-menu.jsonc (the shell hot-reloads it).
+  // `hyprcrt install` appends them for you when that file does not define "style.crt" yet.
+  "style.crt": {"icon":"󰍹","label":"CRT filter","aliases":["crt","scanlines"]},
+  "style.crt.toggle": {"icon":"󰔎","label":"Toggle","checked":"hyprcrt status | jq -e .enabled >/dev/null","action":"hyprcrt toggle"},
+  "style.crt.plain": {"icon":"󰹑","label":"Plain","checked":"hyprcrt status | jq -e '.enabled and .preset==\"plain\"' >/dev/null","action":"hyprcrt preset plain"},
+  "style.crt.scanlines": {"icon":"󰍹","label":"Scanlines","checked":"hyprcrt status | jq -e '.enabled and .preset==\"scanlines\"' >/dev/null","action":"hyprcrt preset scanlines"},
+  "style.crt.monitor": {"icon":"󰌢","label":"Monitor","checked":"hyprcrt status | jq -e '.enabled and .preset==\"monitor\"' >/dev/null","action":"hyprcrt preset monitor"},
+  "style.crt.television": {"icon":"󰟴","label":"Television","checked":"hyprcrt status | jq -e '.enabled and .preset==\"television\"' >/dev/null","action":"hyprcrt preset television"},
+  "style.crt.demo": {"icon":"󰐊","label":"Try it for 10 seconds","when":"! hyprcrt status | jq -e .enabled >/dev/null","action":"hyprcrt demo monitor 10"},
+  "style.crt.shot": {"icon":"󰄀","label":"Save a filtered screenshot","when":"hyprcrt status | jq -e .enabled >/dev/null","action":"hyprcrt shot"},
+  "style.crt.panel": {"icon":"","label":"Settings panel","action":"omarchy-shell crt open"},
+  "style.crt.build": {"icon":"󱁤","label":"Build full-mode plugin","when":"[ \"$(hyprcrt mode)\" = lite ]","action":"omarchy-launch-terminal hyprcrt install --no-load"}
+}

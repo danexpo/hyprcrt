@@ -1,0 +1,122 @@
+name: build
+
+# Builds the plugin against Arch's current hyprland package on every push and weekly, and publishes the
+# result so users do not need a compiler:
+#   - every run uploads hyprcrt-<hyprland commit>.so as a workflow artifact
+#   - pushes to main, the weekly run and manual runs add it to the rolling "prebuilt" release
+#     (tools/crt-fetch reads that release)
+#   - a v* tag creates a proper release with the same asset and checksum file
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1" # weekly: catch Hyprland package bumps
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  plugin:
+    name: Hyprland plugin (Arch, current hyprland package)
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install toolchain and Hyprland headers
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git pkgconf hyprland lua mesa github-cli
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make -C plugin all -j"$(nproc)" OPT="-O2"
+      - name: Name the library after the Hyprland commit it was built against
+        id: hash
+        run: |
+          commit=$(grep -m1 GIT_COMMIT_HASH /usr/include/hyprland/src/version.h | cut -d'"' -f2)
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "hyprland package: $(pacman -Q hyprland) commit $commit"
+          mkdir -p dist
+          cp plugin/out/hyprcrt.so "dist/hyprcrt-$commit.so"
+          (cd dist && sha256sum "hyprcrt-$commit.so" > "hyprcrt-$commit.so.sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hyprcrt-plugin-so
+          path: dist/
+
+      # rolling "prebuilt" release: one asset per Hyprland commit, plus a merged SHA256SUMS
+      - name: Publish to the rolling prebuilt release
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$PWD"
+          commit=${{ steps.hash.outputs.commit }}
+          if ! gh release view prebuilt >/dev/null 2>&1; then
+            gh release create prebuilt --title "Prebuilt plugin" --latest=false \
+              --notes "Rolling release. Each hyprcrt-<commit>.so is built against the Hyprland commit in its name. hyprcrt install (tools/crt-fetch) picks the one matching your Hyprland and verifies it against SHA256SUMS."
+          fi
+          gh release download prebuilt --pattern SHA256SUMS --dir dist --clobber || true
+          touch dist/SHA256SUMS
+          grep -v " hyprcrt-$commit.so$" dist/SHA256SUMS > dist/SHA256SUMS.new || true
+          cat "dist/hyprcrt-$commit.so.sha256" >> dist/SHA256SUMS.new
+          sort -k2 dist/SHA256SUMS.new > dist/SHA256SUMS
+          gh release upload prebuilt "dist/hyprcrt-$commit.so" dist/SHA256SUMS --clobber
+
+      # tagged release: the same asset and checksum file attached to the tag
+      - name: Publish the tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$PWD"
+          commit=${{ steps.hash.outputs.commit }}
+          cp "dist/hyprcrt-$commit.so.sha256" dist/SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" "dist/hyprcrt-$commit.so" dist/SHA256SUMS \
+            --title "hyprcrt $GITHUB_REF_NAME" --generate-notes || \
+          gh release upload "$GITHUB_REF_NAME" "dist/hyprcrt-$commit.so" dist/SHA256SUMS --clobber
+
+  shaders:
+    name: Shaders generate
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install Mesa and a GLES toolchain
+        run: pacman -Syu --noconfirm --needed base-devel pkgconf mesa libglvnd
+      - uses: actions/checkout@v4
+      - name: Build the offscreen shader runner and generate the four presets
+        run: |
+          gcc -O2 tests/shadercheck.c -o tests/shadercheck $(pkg-config --cflags --libs egl glesv2 gbm) -lm
+          for p in plain scanlines monitor television; do
+            tools/crt-gen presets/$p.conf pitch=3 > /tmp/$p.frag
+            head -1 /tmp/$p.frag | grep -q '#version 300 es'
+          done
+          echo "generated shaders OK (a GPU compile needs /dev/dri; that runs in tests/run-nested.sh)"
+
+  scripts:
+    name: Shell, Lua and JSON checks
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install checkers
+        run: pacman -Syu --noconfirm --needed shellcheck lua jq python
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -S warning -e SC1091,SC2016 bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh
+      - name: Lua syntax
+        run: for f in lua/loader.lua omarchy-plugin/bindings.lua contrib/hyprland/hyprcrt.lua tests/nested.lua tests/loader-test.lua; do luac -p "$f"; done
+      - name: JSON and JSONC
+        run: |
+          jq -e '.schemaVersion == 1 and (.id | startswith("omarchy.") | not)' manifest.json
+          python3 -c "import re,json; [json.loads(re.sub(r'^\s*//.*$','',open(f).read(),flags=re.M)) for f in ('omarchy-plugin/menu.jsonc','contrib/waybar/hyprcrt.jsonc')]"
+
+  omarchy-plugin:
+    name: Omarchy plugin QML lint
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install qmllint
+        run: pacman -Syu --noconfirm --needed qt6-declarative
+      - uses: actions/checkout@v4
+      - name: Lint QML (syntax only; the qs.* modules come from omarchy-shell)
+        run: for f in omarchy-plugin/*.qml; do qmllint --no-unqualified-id -i "$f" 2>/dev/null || true; done

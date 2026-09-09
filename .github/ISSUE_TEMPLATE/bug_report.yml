@@ -1,0 +1,33 @@
+name: Bug report
+description: Something looks wrong, crashes, or does not build
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, what you expected. A `hyprcrt shot` image helps for visual issues (plain screenshots are unfiltered).
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: hyprcrt status
+      description: Paste the output of `hyprcrt status` (and `hyprcrt plugin status` if the plugin is involved).
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Paste the output of `hyprctl version | head -2`, plus your GPU and distribution (Omarchy version if applicable).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: crash
+    attributes:
+      label: Crash report (if Hyprland went down)
+      description: The newest `~/.cache/hyprland/hyprlandCrashReport*.txt`, at least the Backtrace section. Hyprland lists loaded plugins at the top of that file.
+      render: text

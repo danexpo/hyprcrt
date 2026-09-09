@@ -1,0 +1,391 @@
+#!/bin/bash
+# hyprcrt - command-line front end for the CRT filter. Talks to the Hyprland plugin when it is loaded
+# ("full" mode) and falls back to Hyprland's decoration:screen_shader ("lite" mode) otherwise.
+#
+#   hyprcrt status                 JSON: mode, enabled, preset, knobs
+#   hyprcrt on | off | toggle
+#   hyprcrt bypass on|off|toggle   hold-to-compare: the plain picture, without forgetting anything
+#   hyprcrt preset <plain|scanlines|monitor|television|custom>
+#   hyprcrt cycle [-1]
+#   hyprcrt set <key> <value>      keys: curve lines mask glow gamma sharp pitch pitch_fullscreen mask_pitch
+#                                        gain textsafe scope match media low_power
+#   hyprcrt demo [preset] [secs]   try a preset for a few seconds (10), then put everything back
+#   hyprcrt shot [file.png]        save the filtered screen as an image (screenshots are unfiltered otherwise)
+#   hyprcrt power auto|on|off      low-power profile (auto: on while a battery is discharging)
+#   hyprcrt mode                   prints plugin | lite
+#   hyprcrt build                  install a prebuilt plugin for the running Hyprland, or build it (tools/crt-build)
+#   hyprcrt install                copy shaders/presets/tools to ~/.local/share/hyprcrt, then build
+#   hyprcrt plugin <status|enable|disable|load|unload>
+#                                  the crash-loop guard keeps a plugin that took Hyprland down from loading
+#                                  again; `enable` lifts that. `load`/`unload` act on the running session.
+#   hyprcrt guard                  the same check the loader does at start (used by the shell service)
+#   hyprcrt dump <file.ppm>        (plugin) write the next filtered frame
+#   hyprcrt gen [preset] [k=v...]  print a generated lite-mode shader
+#   hyprcrt menu                   add the Style > CRT filter entries to the Omarchy menu
+#
+# MIT (c) 2026 Dan Expo
+set -euo pipefail
+
+here=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+root=$(cd "$here/.." && pwd)
+[ -d "$root/shaders" ] || { [ -d /usr/share/hyprcrt/shaders ] && root=/usr/share/hyprcrt; } # distribution package
+data=${XDG_DATA_HOME:-$HOME/.local/share}/hyprcrt
+conf=${XDG_CONFIG_HOME:-$HOME/.config}/hyprcrt
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/hyprcrt
+toggles=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/hypr
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/hyprland
+shaders=${HYPRCRT_SHADERS:-$([ -d "$data/shaders" ] && echo "$data/shaders" || echo "$root/shaders")}
+# a tool from the installed copy when it is there, else from the source tree
+tool() { if [ -x "$data/tools/$1" ]; then echo "$data/tools/$1"; else echo "$root/tools/$1"; fi; }
+lite_state=$conf/lite.conf
+frag=$conf/current.frag
+so=$data/hyprcrt.so
+[ -e "$so" ] || { [ -e /usr/lib/hyprcrt/hyprcrt.so ] && so=/usr/lib/hyprcrt/hyprcrt.so; }
+loader=$data/loader.lua
+disabled_file=$state_dir/plugin-disabled
+loaded_marker=$state_dir/plugin-loaded
+mkdir -p "$conf" "$state_dir"
+stamp=$state_dir/changed
+[ -f "$stamp" ] || : > "$stamp"   # the shell widget watches this file
+
+die() { echo "hyprcrt: $*" >&2; exit 1; }
+
+hypr() { hyprctl "$@" 2>/dev/null; }
+
+plugin_loaded() { hypr plugin list 2>/dev/null | grep -q "Plugin hyprcrt "; }
+
+mode() { plugin_loaded && echo plugin || echo lite; }
+
+notify() { command -v omarchy-notification-send >/dev/null && omarchy-notification-send -u "${2:-low}" "$1" >/dev/null 2>&1 || { command -v notify-send >/dev/null && notify-send -u "${2:-low}" "$1" >/dev/null 2>&1 || true; }; }
+
+json_get() { python3 -c "import json,sys; d=json.load(sys.stdin); v=d$1; print(json.dumps(v) if isinstance(v,(dict,list)) else ('true' if v is True else 'false' if v is False else v))" 2>/dev/null; }
+
+json_str() { python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"; }
+
+# the loader Hyprland sources at every start: picks full/lite mode, carries the crash-loop guard
+ensure_loader() {
+    mkdir -p "$data"
+    if [ -f "$root/lua/loader.lua" ] && ! cmp -s "$root/lua/loader.lua" "$loader" 2>/dev/null; then
+        cp "$root/lua/loader.lua" "$loader"
+    fi
+    if [ -d "$(dirname "$toggles")" ]; then
+        mkdir -p "$toggles"
+        local line="pcall(dofile, \"$loader\")"
+        grep -qsF "$line" "$toggles/hyprcrt.lua" 2>/dev/null ||
+            printf -- '-- hyprcrt: full mode when the plugin is built, lite mode otherwise (generated, do not edit)\n%s\n' "$line" > "$toggles/hyprcrt.lua"
+        rm -f "$toggles/hyprcrt-plugin.lua" # pre-0.2 layout
+    fi
+}
+
+# ---- lite mode state: key=value, defaults from the monitor preset ----------------------------------------
+lite_read() {
+    enabled=0 preset=monitor curve=0 lines=3 mask=1 glow=2 gamma=1 sharp=3 pitch=2 mask_pitch=1 gain=1.0 textsafe=1 scope=all low_power=0
+    if [ -f "$lite_state" ]; then
+        while IFS='=' read -r k v; do
+            case "$k" in ''|\#*) continue ;; esac
+            case "$k" in enabled|preset|curve|lines|mask|glow|gamma|sharp|pitch|mask_pitch|gain|textsafe|scope|low_power) eval "$k=\"\$v\"" ;; esac
+        done < "$lite_state"
+    fi
+}
+lite_write() {
+    cat > "$lite_state.tmp" <<EOT
+enabled=$enabled
+preset=$preset
+curve=$curve
+lines=$lines
+mask=$mask
+glow=$glow
+gamma=$gamma
+sharp=$sharp
+pitch=$pitch
+mask_pitch=$mask_pitch
+gain=$gain
+textsafe=$textsafe
+scope=$scope
+low_power=$low_power
+EOT
+    mv -f "$lite_state.tmp" "$lite_state"
+}
+lite_preset_knobs() {
+    case "$1" in
+        plain)      curve=0 lines=0 mask=0 glow=0 gamma=1 sharp=4 ;;
+        scanlines)  curve=0 lines=3 mask=0 glow=1 gamma=1 sharp=4 ;;
+        monitor)    curve=0 lines=3 mask=1 glow=2 gamma=1 sharp=3 ;;
+        television) curve=1 lines=2 mask=2 glow=3 gamma=1 sharp=1 ;;
+        custom) ;;
+        *) die "unknown preset $1" ;;
+    esac
+}
+# push the lite state into the running compositor: Hyprland's Lua config has no `hyprctl keyword`;
+# `hyprctl eval` runs a chunk in the live config state (not persistent); the loader re-applies it on reload
+lite_live() {
+    if [ "$enabled" = 1 ]; then
+        # curvature is a non-local remap: partial redraws would show seams, so ask for full frames while it is on
+        local dt=2; [ "$curve" = 1 ] && dt=0
+        hypr eval "$(printf 'hl.config({ decoration = { screen_shader = "%s" }, debug = { damage_tracking = %d } })' "$frag" "$dt")" >/dev/null || true
+    else
+        hypr eval 'hl.config({ decoration = { screen_shader = "" }, debug = { damage_tracking = 2 } })' >/dev/null || true
+    fi
+}
+# apply the lite state: generate the shader, point Hyprland at it (live), persist through the loader
+lite_apply() {
+    if [ "$enabled" = 1 ]; then
+        "$(tool crt-gen)" curve="$curve" lines="$lines" mask="$mask" glow="$glow" gamma="$gamma" sharp="$sharp" \
+            pitch="$pitch" mask_pitch="$mask_pitch" gain="$gain" textsafe="$textsafe" > "$frag.tmp" && mv "$frag.tmp" "$frag"
+    fi
+    lite_live
+    ensure_loader
+}
+disabled_reason() { [ -f "$disabled_file" ] && head -c 400 "$disabled_file" | tr -d '\n' || true; }
+lite_status() {
+    lite_read
+    local reason; reason=$(disabled_reason)
+    printf '{"mode":"lite","enabled":%s,"preset":"%s","scope":"%s","knobs":{"curve":%s,"lines":%s,"mask":%s,"glow":%s,"gamma":%s,"sharp":%s,"pitch":%s,"mask_pitch":%s,"gain":%s,"textsafe":%s},"low_power":%s,"plugin_built":%s,"plugin_disabled":%s,"shader":"%s"}\n' \
+        "$([ "$enabled" = 1 ] && echo true || echo false)" "$preset" "$scope" "$curve" "$lines" "$mask" "$glow" "$gamma" "$sharp" "$pitch" "$mask_pitch" "$gain" \
+        "$([ "$textsafe" = 1 ] && echo true || echo false)" "$([ "$low_power" = 1 ] && echo true || echo false)" "$([ -f "$so" ] && echo true || echo false)" \
+        "$([ -n "$reason" ] && json_str "$reason" || echo null)" "$frag"
+}
+
+# ---- crash-loop guard --------------------------------------------------------------------------------------
+# The plugin writes $loaded_marker (the compositor pid) while it is loaded and removes it on a clean unload.
+# A marker whose pid has a Hyprland crash report means the last session died with the plugin in it.
+guard() {
+    [ -f "$loaded_marker" ] || return 0
+    local pid; pid=$(head -n1 "$loaded_marker" 2>/dev/null | tr -dc '0-9')
+    [ -n "$pid" ] || { rm -f "$loaded_marker"; return 0; }
+    if [ -f "$cache/hyprlandCrashReport$pid.txt" ]; then
+        printf 'Hyprland crashed while the CRT plugin was loaded (crash report for pid %s); the plugin stays off until you run: hyprcrt plugin enable\n' "$pid" > "$disabled_file"
+        rm -f "$loaded_marker"
+        notify "CRT filter: Hyprland crashed with the plugin loaded. Staying in lite mode; see hyprcrt plugin status" critical
+        echo "hyprcrt: $(cat "$disabled_file")" >&2
+        return 2
+    fi
+    # no crash report and no such process: the marker is left over from a power loss or a kill
+    kill -0 "$pid" 2>/dev/null || rm -f "$loaded_marker"
+    return 0
+}
+
+# ---- demo: a preset for a few seconds, then back to what was there ---------------------------------------
+demo_start() {
+    local p=${1:-monitor} secs=${2:-10}
+    case "$p" in plain|scanlines|monitor|television) ;; *) die "demo preset must be plain|scanlines|monitor|television" ;; esac
+    case "$secs" in ''|*[!0-9]*) die "demo seconds must be a number" ;; esac
+    [ -f "$state_dir/demo.json" ] && die "a demo is already running"
+    "$0" status > "$state_dir/demo.json"
+    "$0" preset "$p" >/dev/null
+    notify "CRT filter: trying the $p preset for $secs s"
+    (setsid bash -c "sleep $secs; exec '$0' demo-restore" >/dev/null 2>&1 < /dev/null &)
+    echo "demo: $p for $secs s"
+}
+demo_restore() {
+    [ -f "$state_dir/demo.json" ] || exit 0
+    local snap; snap=$(cat "$state_dir/demo.json"); rm -f "$state_dir/demo.json"
+    local was_enabled was_preset
+    was_enabled=$(printf '%s' "$snap" | json_get "['enabled']")
+    was_preset=$(printf '%s' "$snap" | json_get "['preset']")
+    if [ "$was_enabled" != true ]; then
+        "$0" off >/dev/null
+    elif [ "$was_preset" = custom ]; then
+        local k
+        for k in curve lines mask glow gamma sharp; do "$0" set "$k" "$(printf '%s' "$snap" | json_get "['knobs']['$k']")" >/dev/null; done
+    else
+        "$0" preset "$was_preset" >/dev/null
+    fi
+    notify "CRT filter: demo over, back to $([ "$was_enabled" = true ] && echo "$was_preset" || echo off)"
+}
+
+# ---- shot: the filtered frame as an image ------------------------------------------------------------------
+shot() {
+    local out=${1:-$HOME/Pictures/hyprcrt-$(date +%Y%m%d-%H%M%S).png}
+    local ppm; ppm=$(mktemp --suffix=.ppm)
+    if plugin_loaded; then
+        local st; st=$("$0" status)
+        [ "$(printf '%s' "$st" | json_get "['enabled']")" = true ] || die "the filter is off; nothing to shoot"
+        hypr crt dump "$ppm" >/dev/null || die "dump failed"
+        local i=0
+        while [ ! -s "$ppm" ] && [ $i -lt 60 ]; do sleep 0.05; i=$((i + 1)); done
+        [ -s "$ppm" ] || die "the compositor did not write a frame (is the filter active on a monitor?)"
+    else
+        lite_read
+        [ "$enabled" = 1 ] && [ -f "$frag" ] || die "the filter is off; nothing to shoot"
+        command -v grim >/dev/null || die "grim is required for lite-mode shots"
+        local sc=""; for c in "$data/tools/shadercheck" "$root/tests/shadercheck" /usr/lib/hyprcrt/shadercheck; do [ -x "$c" ] && sc=$c && break; done
+        [ -n "$sc" ] || die "shadercheck is not built (run hyprcrt install with gcc available)"
+        local raw; raw=$(mktemp --suffix=.ppm)
+        grim -t ppm "$raw" || die "grim failed"
+        "$sc" "$frag" "$raw" "$ppm" >/dev/null || die "shadercheck failed"
+        rm -f "$raw"
+    fi
+    case "$out" in
+        *.ppm) mv -f "$ppm" "$out" ;;
+        *) if command -v magick >/dev/null; then magick "$ppm" "$out"; elif command -v convert >/dev/null; then convert "$ppm" "$out"
+           else out=${out%.*}.ppm; mv -f "$ppm" "$out"; echo "hyprcrt: ImageMagick not found, kept the raw ppm" >&2; fi
+           rm -f "$ppm" ;;
+    esac
+    echo "$out"
+}
+
+# ---- low-power profile ---------------------------------------------------------------------------------
+on_battery() {
+    local s
+    for s in /sys/class/power_supply/*/status; do
+        [ -f "$s" ] && [ "$(cat "$s" 2>/dev/null)" = Discharging ] && return 0
+    done
+    return 1
+}
+power() {
+    local want=${1:-}
+    case "$want" in
+        auto) on_battery && want=on || want=off ;;
+        on|off) ;;
+        '') if plugin_loaded; then hypr crt status | json_get "['low_power']"; else lite_read; [ "$low_power" = 1 ] && echo true || echo false; fi; return 0 ;;
+        *) die "usage: power auto|on|off" ;;
+    esac
+    local v=0; [ "$want" = on ] && v=1
+    if plugin_loaded; then
+        hypr crt set low_power "$v" >/dev/null
+    else
+        lite_read; low_power=$v; lite_write   # nothing to shed in a single pass; remembered for the plugin
+    fi
+    : > "$stamp"
+    echo "low_power $want"
+}
+
+# ---- plugin lifecycle ---------------------------------------------------------------------------------------
+plugin_cmd() {
+    case "${1:-status}" in
+        status)
+            printf 'built: %s\n' "$([ -f "$so" ] && echo "yes ($so, for Hyprland $(cut -c1-12 "$data/built-for" 2>/dev/null || echo '?'))" || echo no)"
+            printf 'loaded: %s\n' "$(plugin_loaded && echo yes || echo no)"
+            printf 'disabled: %s\n' "$(disabled_reason || true)"
+            [ -f "$loaded_marker" ] && printf 'loaded marker: pid %s\n' "$(head -n1 "$loaded_marker")" || true ;;
+        enable)
+            rm -f "$disabled_file" "$loaded_marker"
+            ensure_loader
+            echo "the plugin will load at the next Hyprland start; load it now with: hyprcrt plugin load" ;;
+        disable)
+            echo "disabled by the user (hyprcrt plugin disable)" > "$disabled_file"
+            echo "the plugin will not load at the next Hyprland start; unload it now with: hyprcrt plugin unload" ;;
+        load)
+            [ -f "$so" ] || die "no plugin built (hyprcrt install)"
+            plugin_loaded && { echo "already loaded"; exit 0; }
+            local running built
+            running=$(hypr version -j | sed -n 's/.*"commit": *"\([0-9a-f]*\)".*/\1/p' | head -n1)
+            built=$(cat "$data/built-for" 2>/dev/null || true)
+            [ -z "$built" ] || [ -z "$running" ] || [ "$built" = "$running" ] || die "the plugin was built for Hyprland ${built:0:12} but ${running:0:12} is running; it loads after a restart"
+            rm -f "$disabled_file"
+            hyprctl plugin load "$so" ;;
+        unload)
+            plugin_loaded || { echo "not loaded"; exit 0; }
+            # Hyprland matches on the path it was given; try the symlink and its target
+            out=$(hyprctl plugin unload "$so" 2>&1)
+            case "$out" in ok*) echo "$out" ;; *) hyprctl plugin unload "$(readlink -f "$so")" ;; esac ;;
+        *) die "usage: plugin status|enable|disable|load|unload" ;;
+    esac
+}
+
+cmd=${1:-status}; shift || true
+case "$cmd" in
+    mode) mode ;;
+    status)
+        if plugin_loaded; then hypr crt status; else lite_status; fi ;;
+    on|off|toggle|preset|cycle|set|reload|dump|bypass)
+        if plugin_loaded; then
+            out=$(hypr crt "$cmd" "$@") || true
+            case "$out" in error:*) die "${out#error: }" ;; esac
+            : > "$stamp"
+            [ "$cmd" = dump ] || [ "$cmd" = reload ] || hypr crt status
+        else
+            lite_read
+            case "$cmd" in
+                on) enabled=1 ;;
+                off) enabled=0 ;;
+                toggle) [ "$enabled" = 1 ] && enabled=0 || enabled=1 ;;
+                bypass)
+                    # nothing persists: only the live shader goes away or comes back
+                    case "${1:-toggle}" in
+                        on|1) hypr eval 'hl.config({ decoration = { screen_shader = "" }, debug = { damage_tracking = 2 } })' >/dev/null || true; : > "$state_dir/bypass" ;;
+                        off|0) rm -f "$state_dir/bypass"; lite_live ;;
+                        toggle) if [ -f "$state_dir/bypass" ]; then exec "$0" bypass off; else exec "$0" bypass on; fi ;;
+                        *) die "usage: bypass on|off|toggle" ;;
+                    esac
+                    lite_status; exit 0 ;;
+                preset) [ $# -ge 1 ] || die "usage: preset <name>"; lite_preset_knobs "$1"; preset=$1; enabled=1 ;;
+                cycle)
+                    ring=(plain scanlines monitor television); idx=0
+                    for i in 0 1 2 3; do [ "${ring[$i]}" = "$preset" ] && idx=$i; done
+                    d=1; [ "${1:-}" = "-1" ] && d=-1
+                    preset=${ring[$(( (idx + 4 + d) % 4 ))]}; lite_preset_knobs "$preset"; enabled=1 ;;
+                set)
+                    [ $# -ge 2 ] || die "usage: set <key> <value>"
+                    case "$1" in
+                        curve|lines|mask|glow|gamma|sharp)
+                            top=4; [ "$1" = curve ] && top=1; [ "$1" = mask ] && top=3
+                            cur=$(eval "echo \$$1")
+                            case "$2" in +*|-*) v=$(( cur + $2 )) ;; *) v=$2 ;; esac
+                            v=$(( ((v % (top + 1)) + top + 1) % (top + 1) ))
+                            eval "$1=$v"; preset=custom ;;
+                        pitch|mask_pitch|gain|textsafe|scope|low_power) eval "$1=\"\$2\"" ;;
+                        pitch_fullscreen|match|media) echo "hyprcrt: $1 needs the full-mode plugin; remembered nothing" >&2 ;;
+                        *) die "unknown key $1 (lite mode keys: curve lines mask glow gamma sharp pitch mask_pitch gain textsafe scope low_power)" ;;
+                    esac ;;
+                reload) ;;
+                dump) die "dump needs the plugin (full mode)" ;;
+            esac
+            lite_write; lite_apply; : > "$stamp"
+            case "$cmd" in toggle|on|off|preset|cycle) notify "CRT filter $([ "$enabled" = 1 ] && echo "on ($preset)" || echo off)" ;; esac
+            lite_status
+        fi ;;
+    demo) demo_start "$@" ;;
+    demo-restore) demo_restore ;;
+    shot) shot "$@" ;;
+    power) power "$@" ;;
+    guard) guard ;;
+    plugin) plugin_cmd "$@" ;;
+    gen) exec "$(tool crt-gen)" "$@" ;;
+    build) exec "$(tool crt-build)" "$@" ;;
+    install)
+        mkdir -p "$data"
+        rm -rf "$data/shaders" "$data/presets" "$data/tools"
+        cp -r "$root/shaders" "$root/presets" "$root/tools" "$data/"
+        chmod +x "$data"/tools/*
+        # the offscreen shader runner makes `hyprcrt shot` work in lite mode; optional
+        if [ -f "$root/tests/shadercheck.c" ] && command -v gcc >/dev/null && pkg-config --exists egl glesv2 gbm 2>/dev/null; then
+            gcc -O2 "$root/tests/shadercheck.c" -o "$data/tools/shadercheck" $(pkg-config --cflags --libs egl glesv2 gbm) -lm 2>/dev/null || rm -f "$data/tools/shadercheck"
+        fi
+        ensure_loader
+        echo "shaders, presets, tools and the loader installed to $data"
+        mkdir -p "$HOME/.local/bin"
+        [ -e "$HOME/.local/bin/hyprcrt" ] || ln -s "$root/bin/hyprcrt" "$HOME/.local/bin/hyprcrt"
+        [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy" ] && "$0" menu >/dev/null || true
+        exec "$data/tools/crt-build" --source "$root" "$@" ;;
+    menu)
+        # add the CRT entries to the user's Omarchy menu extension (JSONC), once
+        [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy" ] || { echo "not an Omarchy system, no menu to extend"; exit 0; }
+        menu=${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/extensions/omarchy-menu.jsonc
+        [ -f "$root/omarchy-plugin/menu.jsonc" ] || die "menu.jsonc not found"
+        if [ -f "$menu" ] && grep -q '"style.crt"' "$menu"; then echo "menu entries already present in $menu"; exit 0; fi
+        entries=$(grep -E '^\s*"style\.crt' "$root/omarchy-plugin/menu.jsonc")
+        if [ ! -f "$menu" ]; then
+            mkdir -p "$(dirname "$menu")"
+            printf '{\n  // Omarchy menu extensions. Entries here extend the default menu.\n%s\n}\n' "$entries" > "$menu"
+        else
+            python3 - "$menu" "$entries" <<'PY' || die "could not edit $menu; add the entries from omarchy-plugin/menu.jsonc by hand"
+import sys
+path, entries = sys.argv[1], sys.argv[2]
+s = open(path).read()
+i = s.rstrip().rfind('}')
+if i < 0: sys.exit(1)
+head = s[:i].rstrip()
+# the previous entry may lack a trailing comma (JSONC allows both); add one if needed
+if head.endswith('{'):
+    head += '\n'
+elif not head.endswith(','):
+    head += ','
+open(path, 'w').write(head + '\n' + entries + '\n}\n')
+PY
+        fi
+        echo "menu entries added to $menu" ;;
+    help|-h|--help) sed -n '2,25p' "$0" ;;
+    *) die "unknown command $cmd (try: hyprcrt help)" ;;
+esac

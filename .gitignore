@@ -1,0 +1,9 @@
+# build outputs
+plugin/out/
+bench/bench
+tests/shadercheck
+# test session output (screenshots, nested-session state)
+tests/out/
+# editor and OS noise
+*.swp
+.DS_Store
