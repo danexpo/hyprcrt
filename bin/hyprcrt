@@ -34,7 +34,6 @@ conf=${XDG_CONFIG_HOME:-$HOME/.config}/hyprcrt
 state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/hyprcrt
 toggles=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/hypr
 cache=${XDG_CACHE_HOME:-$HOME/.cache}/hyprland
-shaders=${HYPRCRT_SHADERS:-$([ -d "$data/shaders" ] && echo "$data/shaders" || echo "$root/shaders")}
 # a tool from the installed copy when it is there, else from the source tree
 tool() { if [ -x "$data/tools/$1" ]; then echo "$data/tools/$1"; else echo "$root/tools/$1"; fi; }
 lite_state=$conf/lite.conf
@@ -351,6 +350,7 @@ case "$cmd" in
         chmod +x "$data"/tools/*
         # the offscreen shader runner makes `hyprcrt shot` work in lite mode; optional
         if [ -f "$root/tests/shadercheck.c" ] && command -v gcc >/dev/null && pkg-config --exists egl glesv2 gbm 2>/dev/null; then
+            # shellcheck disable=SC2046  # pkg-config output must split into flags
             gcc -O2 "$root/tests/shadercheck.c" -o "$data/tools/shadercheck" $(pkg-config --cflags --libs egl glesv2 gbm) -lm 2>/dev/null || rm -f "$data/tools/shadercheck"
         fi
         ensure_loader
