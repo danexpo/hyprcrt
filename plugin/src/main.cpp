@@ -797,6 +797,25 @@ static SDispatchResult applyCommand(const std::string& cmdline) {
                    a == "enabled" || a == "block_scanout" || a == "halo_half" || a == "capture" || a == "glow_frames" || a == "low_power") {
             if (a == "scope" && b != "auto" && b != "all" && b != "fullscreen" && b != "games" && b != "rules" && b != "window" && b != "off")
                 return {.success = false, .error = "scope must be auto|all|fullscreen|games|rules|window|off"};
+            // the same ranges and messages as bin/hyprcrt's check_value: a bad value is refused, never stored
+            const auto intIn = [&b](int lo, int hi) { return b.size() == 1 && b[0] >= '0' + lo && b[0] <= '0' + hi; };
+            if (a == "pitch" && !intIn(0, 8))
+                return {.success = false, .error = "pitch must be an integer 0-8 (0 = auto)"};
+            if (a == "pitch_fullscreen" && !intIn(1, 8))
+                return {.success = false, .error = "pitch_fullscreen must be an integer 1-8"};
+            if (a == "mask_pitch" && !intIn(1, 3))
+                return {.success = false, .error = "mask_pitch must be an integer 1-3"};
+            if (a == "gain") {
+                const bool shape = !b.empty() && b.find_first_not_of("0123456789.") == std::string::npos && std::ranges::count(b, '.') <= 1 && b != ".";
+                float      g     = 0.f;
+                try {
+                    g = shape ? std::stof(b) : 0.f;
+                } catch (...) {}
+                if (!(g >= 0.25f && g <= 4.f))
+                    return {.success = false, .error = "gain must be a number 0.25-4"};
+            }
+            if ((a == "textsafe" || a == "low_power") && b != "0" && b != "1" && b != "true" && b != "false" && b != "on" && b != "off" && b != "yes" && b != "no")
+                return {.success = false, .error = a + " must be 0 or 1 (true/false, on/off, yes/no)"};
             // `set match/media` takes the rest of the line, so a regex may contain spaces
             if (a == "match" || a == "media") {
                 std::string rest;

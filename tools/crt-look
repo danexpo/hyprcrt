@@ -1,11 +1,11 @@
 #!/bin/sh
 # crt-look - turn a preset (key=value file) plus overrides into the numbers the shaders need.
-# The one place the knob -> look mapping lives outside the plugin (which mirrors it in Look.cpp).
+# The one place the knob -> look mapping lives outside the plugin (which mirrors it in plugin/src/Look.hpp).
 # Prints KEY=VALUE lines. POSIX sh + awk only.
 #
 # usage: crt-look [preset.conf] [key=value ...]
 # knobs: curve 0/1  lines 0-4  mask 0-3  glow 0-4  gamma 0-4  sharp 0-4
-#        pitch 1-8 (physical px per virtual source px)  mask_pitch 1-3  gain 0.5-2.0  textsafe 0/1
+#        pitch 1-8 (physical px per virtual source px)  mask_pitch 1-3  gain 0.25-4  textsafe 0/1
 set -eu
 
 curve=0 lines=3 mask=1 glow=2 gamma=1 sharp=3 pitch=2 mask_pitch=1 gain=1.0 textsafe=1
@@ -34,6 +34,7 @@ awk -v curve="$curve" -v lines="$lines" -v mask="$mask" -v glow="$glow" -v gamma
     split("2.0 2.2 2.4 2.6 2.8", gam, " ");
     clamp(lines, 0, 4); lines = c; clamp(glow, 0, 4); glow = c; clamp(gamma, 0, 4); gamma = c; clamp(sharp, 0, 4); sharp = c;
     clamp(mask, 0, 3); mask = c; clamp(pitch, 1, 8); pitch = c; clamp(mask_pitch, 1, 3); mask_pitch = c;
+    gain = gain + 0; if (gain < 0.25) gain = 0.25; if (gain > 4) gain = 4;   # as Look.hpp: never a black screen
     if (curve != 0) curve = 1;
     # text-safe: at pitch 1 there are no source rows to draw lines between, and a mask on 1px text smears it
     if (textsafe != 0 && pitch < 2) { lines = 0; mask = 0; }

@@ -74,7 +74,7 @@ inline SLook computeLook(SKnobs k, int pitch) {
         mg /= (3.f + L.slotDim) / 4.f;
     L.maskLight = ml * mg;
     L.maskDark  = md * mg;
-    L.maskPitch = static_cast<float>(k.maskPitch);
+    L.maskPitch = static_cast<float>(std::clamp(k.maskPitch, 1, 3));
     L.haloAmt   = halo[k.glow];
     L.glowIn    = gin[k.glow];
     if (k.curve) {

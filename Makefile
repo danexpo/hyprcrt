@@ -1,6 +1,6 @@
 # hyprcrt - the gate, in one word. Mirrors .github/workflows/build.yml so a piece is green here
 # before CI sees it. GPU compiles and the live behaviour are proved in tests/run-nested.sh.
-SH_FILES  = bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate
+SH_FILES  = bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh
 LUA_FILES = lua/loader.lua omarchy-plugin/bindings.lua contrib/hyprland/hyprcrt.lua tests/nested.lua tests/loader-test.lua
 GATE_OUT  = tests/out/gate
 # Arch ships qmllint outside PATH, in /usr/lib/qt6/bin
@@ -8,10 +8,10 @@ QMLLINT  ?= $(or $(shell command -v qmllint 2>/dev/null),$(wildcard /usr/lib/qt6
 # syntax and everything else qmllint checks, minus what needs omarchy-shell's qs.* modules to resolve
 QMLLINT_FLAGS = --import disable --unresolved-type disable --unqualified disable --required disable --signal-handler-parameters disable -W 0
 
-.PHONY: gate plugin shaders shell lua json qml shadercheck clean
+.PHONY: gate plugin shaders cli shell lua json qml shadercheck clean
 
-gate: plugin shaders shell lua json qml
-	@echo "gate: green - plugin built, every shader compiles, shell/lua/json/qml checks passed"
+gate: plugin shaders cli shell lua json qml
+	@echo "gate: green - plugin built, every shader compiles, the CLI refuses bad values, shell/lua/json/qml checks passed"
 
 plugin:
 	$(MAKE) -C plugin all
@@ -20,6 +20,10 @@ plugin:
 # through glslangValidator and, where /dev/dri exists, the GPU (tests/shadercheck)
 shaders:
 	tests/shadergate $(GATE_OUT)
+
+# bin/hyprcrt's lite path in a sandboxed HOME (never the live session): what `set` refuses and stores
+cli:
+	tests/run-cli-test.sh
 
 shell:
 	@command -v shellcheck >/dev/null || { echo "gate: shellcheck is not installed (sudo pacman -S shellcheck)"; exit 1; }

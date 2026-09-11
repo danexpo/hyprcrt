@@ -97,7 +97,9 @@ jobs:
         run: pacman -Syu --noconfirm --needed shellcheck lua jq python
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck -S warning -e SC1091,SC2016 bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate
+        run: shellcheck -S warning -e SC1091,SC2016 bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh
+      - name: The CLI in a sandboxed HOME (what set refuses and stores)
+        run: tests/run-cli-test.sh
       - name: Lua syntax
         run: for f in lua/loader.lua omarchy-plugin/bindings.lua contrib/hyprland/hyprcrt.lua tests/nested.lua tests/loader-test.lua; do luac -p "$f"; done
       - name: JSON and JSONC

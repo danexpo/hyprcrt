@@ -28,6 +28,10 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- `hyprcrt set gain 0` (or any value outside the plugin's ranges) no longer stores a black screen: `set`
+  refuses bad `pitch`, `pitch_fullscreen`, `mask_pitch`, `gain`, `textsafe` and `low_power` values in both
+  modes with the same message, lite mode clamps gain as the plugin does, and `set textsafe off` in lite
+  mode now turns text-safe off.
 - The gate compiles every shader (four presets, seven plugin passes) through glslangValidator and the
   GPU, and the QML lint can fail; the halation passes' `step` uniform, which shadowed a GLSL built-in
   that stricter compilers reject, is now `texelStep`.
