@@ -23,7 +23,11 @@ nested_run() {
     unset HYPRLAND_INSTANCE_SIGNATURE
     Hyprland -c "$config" > "$log" 2>&1 &
     NESTED_PID=$!
-    trap 'kill "$NESTED_PID" 2>/dev/null; rm -f "$sig" "$wl"' EXIT
+    # a compositor that dies on its own must not leave a .sig pointing the next hyprctl -i at a dead instance: the
+    # paths are expanded now, since the trap can run after this function's locals are gone, and the kill of a pid
+    # that is already gone must not stop the trap under set -e before the rm
+    # shellcheck disable=SC2064
+    trap "kill $NESTED_PID 2>/dev/null || true; rm -f '$sig' '$wl'" EXIT
     trap 'exit 143' INT TERM
     local i inst=""
     for i in $(seq 150); do

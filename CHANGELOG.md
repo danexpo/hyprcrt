@@ -35,7 +35,8 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
   plugin applies at load and after every config reload; its values win over `plugin:crt:*`.
 - The nested test harness no longer opens a terminal or runs a start-up command inside the test session;
   it writes `tests/out/nested.sig` / `.wl` so every check is driven from the host, and killing the script
-  stops the nested compositor.
+  stops the nested compositor. The signature files are also removed when the nested compositor dies on its own
+  (a crash, the guard test's kill), instead of pointing the next `hyprctl -i` at a dead instance.
 - `hyprcrt set gain 0` (or any value outside the plugin's ranges) no longer stores a black screen: `set`
   refuses bad `pitch`, `pitch_fullscreen`, `mask_pitch`, `gain`, `textsafe` and `low_power` values in both
   modes with the same message, lite mode clamps gain as the plugin does, and `set textsafe off` in lite
