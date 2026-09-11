@@ -45,7 +45,9 @@ lua:
 json:
 	@jq -e '.schemaVersion == 1 and (.id | startswith("omarchy.") | not)' manifest.json >/dev/null
 	@python3 -c "import re,json; [json.loads(re.sub(r'^\s*//.*$$','',open(f).read(),flags=re.M)) for f in ('omarchy-plugin/menu.jsonc','contrib/waybar/hyprcrt.jsonc')]"
-	@echo "json: manifest and jsonc parse"
+	@# the menu and the Waybar module run jq, so the package cannot leave it optional
+	@grep -q "^depends=(.*'jq'" packaging/aur/PKGBUILD || { echo "json: menu.jsonc and the Waybar module call jq; packaging/aur/PKGBUILD must depend on it"; exit 1; }
+	@echo "json: manifest and jsonc parse; the AUR package depends on the jq they call"
 
 # a syntax error fails; unresolved qs.* names do not (those modules come from omarchy-shell). CI always runs it.
 qml:

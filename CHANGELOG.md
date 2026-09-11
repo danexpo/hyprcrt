@@ -32,6 +32,8 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- The AUR package depends on jq, which the Omarchy menu's check marks and the Waybar module call; it was optional,
+  and the Waybar module showed nothing without it (`make json` checks it).
 - Lite mode no longer takes knobs it cannot use: `set scope`, `low_power`, `pitch_fullscreen`, `match`,
   `media` and `hyprcrt power on|off|auto` exit 1 with "needs the full-mode plugin" and leave the state file as it was;
   lite `status` carries no `scope` or `low_power`, and the panel hides those rows in lite mode instead of

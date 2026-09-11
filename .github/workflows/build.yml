@@ -110,6 +110,7 @@ jobs:
         run: |
           jq -e '.schemaVersion == 1 and (.id | startswith("omarchy.") | not)' manifest.json
           python3 -c "import re,json; [json.loads(re.sub(r'^\s*//.*$','',open(f).read(),flags=re.M)) for f in ('omarchy-plugin/menu.jsonc','contrib/waybar/hyprcrt.jsonc')]"
+          grep -q "^depends=(.*'jq'" packaging/aur/PKGBUILD # the menu and the Waybar module run jq
 
   omarchy-plugin:
     name: Omarchy plugin QML lint
