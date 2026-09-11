@@ -336,13 +336,13 @@ bool CCrtChain::run(GLuint srcTex, int W, int H, const SLook& look, int pitch, b
     // 3./4. halation: picture + afterglow through the 7-tap blur, each way
     target(m_haloHT);
     glUseProgram(m_haloH.id);
-    glUniform2f(m_haloH.loc("step"), 1.f / m_gW, 0.f);
+    glUniform2f(m_haloH.loc("texelStep"), 1.f / m_gW, 0.f);
     bindTex(0, src);
     bindTex(1, glowNew.tex);
     drawQuad();
     target(m_halo);
     glUseProgram(m_haloV.id);
-    glUniform2f(m_haloV.loc("step"), 0.f, 1.f / m_gH);
+    glUniform2f(m_haloV.loc("texelStep"), 0.f, 1.f / m_gH);
     bindTex(0, m_haloHT.tex);
     drawQuad();
     check("halo");

@@ -77,21 +77,16 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" "dist/hyprcrt-$commit.so" dist/SHA256SUMS --clobber
 
   shaders:
-    name: Shaders generate
+    name: Shaders compile
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
-      - name: Install Mesa and a GLES toolchain
-        run: pacman -Syu --noconfirm --needed base-devel pkgconf mesa libglvnd
+      - name: Install glslang
+        run: pacman -Syu --noconfirm --needed glslang gawk
       - uses: actions/checkout@v4
-      - name: Build the offscreen shader runner and generate the four presets
-        run: |
-          gcc -O2 tests/shadercheck.c -o tests/shadercheck $(pkg-config --cflags --libs egl glesv2 gbm) -lm
-          for p in plain scanlines monitor television; do
-            tools/crt-gen presets/$p.conf pitch=3 > /tmp/$p.frag
-            head -1 /tmp/$p.frag | grep -q '#version 300 es'
-          done
-          echo "generated shaders OK (a GPU compile needs /dev/dri; that runs in tests/run-nested.sh)"
+      - name: The four presets and the seven plugin passes through glslangValidator
+        # no /dev/dri here, so the GPU compile is skipped; tests/shadergate fails if it has no checker at all
+        run: tests/shadergate /tmp/gate
 
   scripts:
     name: Shell, Lua and JSON checks
@@ -102,7 +97,7 @@ jobs:
         run: pacman -Syu --noconfirm --needed shellcheck lua jq python
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck -S warning -e SC1091,SC2016 bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh
+        run: shellcheck -S warning -e SC1091,SC2016 bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate
       - name: Lua syntax
         run: for f in lua/loader.lua omarchy-plugin/bindings.lua contrib/hyprland/hyprcrt.lua tests/nested.lua tests/loader-test.lua; do luac -p "$f"; done
       - name: JSON and JSONC
@@ -116,7 +111,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install qmllint
-        run: pacman -Syu --noconfirm --needed qt6-declarative
+        run: pacman -Syu --noconfirm --needed qt6-declarative make
       - uses: actions/checkout@v4
-      - name: Lint QML (syntax only; the qs.* modules come from omarchy-shell)
-        run: for f in omarchy-plugin/*.qml; do qmllint --no-unqualified-id -i "$f" 2>/dev/null || true; done
+      - name: Lint QML (a syntax error fails; the qs.* modules come from omarchy-shell, so their names are not resolved)
+        run: make qml QMLLINT=/usr/lib/qt6/bin/qmllint

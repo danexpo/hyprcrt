@@ -1,0 +1,42 @@
+#!/bin/sh
+# shadergate - the gate's shader check: every shader either mode can load must compile.
+#   tests/shadergate [outdir]
+# Lite: the four presets through tools/crt-gen at pitch 3. Full: each pass in shaders/passes/ assembled
+# exactly as plugin/src/Chain.cpp does (version and precision line, common.glsl, the pass). Each is
+# validated with glslangValidator when it is installed (CI), and compiled and linked on the GPU with
+# tests/shadercheck when /dev/dri/renderD128 exists (here). With neither, the check fails rather than
+# pass unseen. MIT (c) 2026 Dan Expo.
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+out=${1:-$root/tests/out/gate}
+mkdir -p "$out"
+
+frags=""
+for p in plain scanlines monitor television; do
+    "$root/tools/crt-gen" "$root/presets/$p.conf" pitch=3 > "$out/$p.frag"
+    frags="$frags $out/$p.frag"
+done
+for pass in "$root"/shaders/passes/*.frag; do
+    name=$(basename "$pass")
+    { printf '#version 300 es\nprecision highp float;\n'; cat "$root/shaders/common.glsl"; printf '\n'; cat "$pass"; } > "$out/pass_$name"
+    frags="$frags $out/pass_$name"
+done
+
+checkers=0 failed=0
+if command -v glslangValidator >/dev/null; then
+    checkers=$((checkers + 1))
+    for f in $frags; do
+        glslangValidator -S frag "$f" > "$out/glslang.log" 2>&1 || { echo "shaders: glslang rejects $f"; cat "$out/glslang.log"; failed=1; }
+    done
+fi
+if [ -e /dev/dri/renderD128 ]; then
+    make -s -C "$root" shadercheck > /dev/null
+    checkers=$((checkers + 1))
+    for f in $frags; do
+        "$root/tests/shadercheck" "$f" > /dev/null 2> "$out/gpu.log" || { echo "shaders: the GPU rejects $f"; cat "$out/gpu.log"; failed=1; }
+    done
+fi
+[ "$checkers" -gt 0 ] || { echo "shaders: no checker (install glslang, or run where /dev/dri/renderD128 exists)"; exit 1; }
+[ "$failed" -eq 0 ] || exit 1
+set -- $frags
+echo "shaders: $# shaders compile ($checkers checker(s): four presets, $(( $# - 4 )) plugin passes)"

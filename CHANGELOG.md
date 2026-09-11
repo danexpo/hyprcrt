@@ -28,6 +28,9 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- The gate compiles every shader (four presets, seven plugin passes) through glslangValidator and the
+  GPU, and the QML lint can fail; the halation passes' `step` uniform, which shadowed a GLSL built-in
+  that stricter compilers reject, is now `texelStep`.
 - Preset buttons in the bar panel are a 2x2 grid, not a single row of four: "Scanlines" and
   "Television" no longer overflow their buttons (cells go from ~86 px to ~177 px wide).
 - Building over a plugin the compositor had mapped could crash Hyprland during `plugin unload`:
