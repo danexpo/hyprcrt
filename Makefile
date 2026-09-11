@@ -1,6 +1,6 @@
 # hyprcrt - the gate, in one word. Mirrors .github/workflows/build.yml so a piece is green here
 # before CI sees it. GPU compiles and the live behaviour are proved in tests/run-nested.sh.
-SH_FILES  = bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh
+SH_FILES  = bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh tests/presetcheck
 LUA_FILES = lua/loader.lua omarchy-plugin/bindings.lua contrib/hyprland/hyprcrt.lua tests/nested.lua tests/loader-test.lua
 GATE_OUT  = tests/out/gate
 # Arch ships qmllint outside PATH, in /usr/lib/qt6/bin
@@ -8,13 +8,17 @@ QMLLINT  ?= $(or $(shell command -v qmllint 2>/dev/null),$(wildcard /usr/lib/qt6
 # syntax and everything else qmllint checks, minus what needs omarchy-shell's qs.* modules to resolve
 QMLLINT_FLAGS = --import disable --unresolved-type disable --unqualified disable --required disable --signal-handler-parameters disable -W 0
 
-.PHONY: gate plugin shaders cli install-test shell lua json qml shadercheck clean
+.PHONY: gate plugin shaders presets cli install-test shell lua json qml shadercheck clean
 
-gate: plugin shaders cli install-test shell lua json qml
-	@echo "gate: green - plugin built, every shader compiles, the CLI refuses bad values, the README's install works on a clean HOME, shell/lua/json/qml checks passed"
+gate: plugin shaders presets cli install-test shell lua json qml
+	@echo "gate: green - plugin built, every shader compiles, the preset tables agree with presets/*.conf, the CLI refuses bad values, the README's install works on a clean HOME, shell/lua/json/qml checks passed"
 
 plugin:
 	$(MAKE) -C plugin all
+
+# the preset numbers in bin/hyprcrt and plugin/src/Look.hpp are hand copies of presets/*.conf: they must agree
+presets:
+	tests/presetcheck
 
 # every shader either mode loads must compile: the four presets (crt-gen) and the seven plugin passes,
 # through glslangValidator and, where /dev/dri exists, the GPU (tests/shadercheck)

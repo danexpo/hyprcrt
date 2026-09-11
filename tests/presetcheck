@@ -1,0 +1,61 @@
+#!/bin/bash
+# presetcheck - the preset numbers live as data in presets/*.conf and as two hand copies, the lite path's table in
+# bin/hyprcrt (lite_preset_knobs) and the plugin's in plugin/src/Look.hpp (applyPreset). Fails when a copy names a
+# different set of presets or a different value for any of the six knobs.
+#   tests/presetcheck
+# MIT (c) 2026 Dan Expo.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+knobs=(curve lines mask glow gamma sharp)
+fails=0
+bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
+
+# every table becomes lines of "<preset> curve=… lines=… mask=… glow=… gamma=… sharp=…", in knob order, sorted
+from_data() {
+    local f name k line
+    for f in "$root"/presets/*.conf; do
+        name=$(basename "$f" .conf) line=$name
+        for k in "${knobs[@]}"; do
+            line+=" $k=$(sed -n "s/^$k=\([^[:space:]]*\).*/\1/p" "$f" | tail -n1)"
+        done
+        echo "$line"
+    done | sort
+}
+from_shell() { # the case arms of lite_preset_knobs: `  name)  curve=0 lines=0 … ;;`
+    awk '/^lite_preset_knobs\(\)/ { on = 1; next } on && /^}/ { exit }
+         on && match($0, /^[[:space:]]*[a-z]+\)[[:space:]]+curve=/) {
+             name = $1; sub(/\).*/, "", name); body = $0; sub(/^[^)]*\)/, "", body); sub(/;;.*/, "", body)
+             print name, body }' "$root/bin/hyprcrt" | knob_order
+}
+from_cpp() { # applyPreset: `if (name == "x") {` and on the next line `k.curve = 0; k.lines = 0; …`
+    awk '/applyPreset\(/ { on = 1; next } on && /^}/ { exit }
+         on && match($0, /name == "[a-z]+"/) { name = substr($0, RSTART + 9, RLENGTH - 10); next }
+         on && name != "" && /k\.curve/ { body = $0; gsub(/k\./, "", body); gsub(/ = /, "=", body); gsub(/;/, "", body)
+             print name, body; name = "" }' "$root/plugin/src/Look.hpp" | knob_order
+}
+knob_order() { # "<name> k=v k=v …" in any order -> the six knobs in order; a missing knob reads as empty
+    local name rest k v line
+    while read -r name rest; do
+        line=$name
+        for k in "${knobs[@]}"; do
+            v=$(tr ' ' '\n' <<<"$rest" | sed -n "s/^$k=//p" | tail -n1)
+            line+=" $k=$v"
+        done
+        echo "$line"
+    done | sort
+}
+
+data=$(from_data)
+[ -n "$data" ] || { echo "presets: no presets/*.conf"; exit 1; }
+for copy in shell cpp; do
+    case $copy in shell) where=bin/hyprcrt; table=$(from_shell) ;; cpp) where=plugin/src/Look.hpp; table=$(from_cpp) ;; esac
+    [ -n "$table" ] || { bad "$where: no preset table found"; continue; }
+    if [ "$data" = "$table" ]; then
+        echo "  ok   $where agrees with presets/*.conf ($(wc -l <<<"$table") presets)"
+    else
+        bad "$where disagrees with presets/*.conf:"
+        diff <(echo "$data") <(echo "$table") | sed -n 's/^</    presets\/*.conf:/p; s/^>/    '"${where//\//\\/}"':/p' || true
+    fi
+done
+[ "$fails" = 0 ] || { echo "presets: $fails table(s) out of step with presets/*.conf"; exit 1; }
+echo "presets: bin/hyprcrt and Look.hpp carry the numbers in presets/*.conf"

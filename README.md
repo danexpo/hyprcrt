@@ -207,6 +207,8 @@ tests/run-loader-test.sh    a nested Hyprland wired only through the loader, for
 tests/lib-nested.sh         the launcher both use: signature and socket files, no shell inside, cleanup
 tests/shadergate            every shader either mode loads, compiled (glslang, and the GPU where there is one)
 tests/run-cli-test.sh       bin/hyprcrt in a sandboxed HOME: what `set` refuses and stores
+tests/run-install-test.sh   the README's plain-Hyprland install on a clean HOME, against a local stand-in release
+tests/presetcheck           the preset tables in bin/hyprcrt and Look.hpp agree with presets/*.conf
 bench/bench.c               the GPU cost benchmark behind the numbers above
 docs/PLAN.md                the feasibility analysis and plan this was built from
 docs/previews/              the presets on a test card
@@ -215,7 +217,7 @@ docs/previews/              the presets on a test card
 ## Testing
 
 ```sh
-make gate                             # the CI gate: plugin build, every shader compiled, the CLI, the install, shell/lua/json/qml
+make gate                             # the CI gate: plugin build, every shader compiled, the preset tables, the CLI, the install, shell/lua/json/qml
 tests/run-nested.sh auto monitor 0 &  # a nested Hyprland with the plugin loaded (scope, preset, pitch)
 hyprctl -i "$(cat tests/out/nested.sig)" crt status
 hyprctl -i "$(cat tests/out/nested.sig)" crt dump /tmp/out.ppm   # look at the filtered frame
