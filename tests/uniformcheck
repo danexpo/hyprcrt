@@ -1,0 +1,44 @@
+#!/bin/bash
+# uniformcheck - every `m_<pass>.loc("name")` in plugin/src/Chain.cpp must name a uniform the pass's own
+# .frag declares, so a rename on one side (like the texelStep rename, DR-F1) cannot silently drop an effect:
+# glGetUniformLocation returns -1 for a name the shader does not have, glUniform* on -1 is a silent no-op.
+# The three generic ones (tex, tex2, texA), bound through a passed-in SProgram&, are checked against every
+# pass's own uniforms instead of one fixed pass.
+#   tests/uniformcheck
+# MIT (c) 2026 Dan Expo.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+cpp=$root/plugin/src/Chain.cpp
+passdir=$root/shaders/passes
+fails=0
+bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
+
+declare -A frag=([down]=down [glow]=glow [haloH]=halo_h [haloV]=halo_v [beam]=beam [scan]=scan [glass]=glass)
+
+declared() { # <pass> -> space-separated uniform names its .frag declares
+    awk '/^uniform /{ n=$3; sub(/;.*/, "", n); printf "%s ", n }' "$passdir/$1.frag"
+}
+
+checked=0
+# m_<pass>.loc("name") - member calls, each against its own pass's uniforms
+while read -r member name; do
+    p=${frag[$member]:-}
+    [ -n "$p" ] || { bad "Chain.cpp: m_$member has no known pass (add it to uniformcheck's map)"; continue; }
+    checked=$((checked + 1))
+    case " $(declared "$p") " in *" $name "*) ;; *) bad "m_$member.loc(\"$name\") - $p.frag declares no such uniform" ;; esac
+done < <(grep -o 'm_[A-Za-z]*\.loc("[A-Za-z0-9]*")' "$cpp" | sed -E 's/^m_([A-Za-z]*)\.loc\("([A-Za-z0-9]*)"\)$/\1 \2/')
+
+# the generic tex/tex2/texA calls on a passed-in program - every pass that declares one of these must be reachable
+for name in tex tex2 texA; do
+    grep -q "p\.loc(\"$name\")" "$cpp" || continue
+    checked=$((checked + 1))
+    any=0
+    for p in "${frag[@]}"; do
+        case " $(declared "$p") " in *" $name "*) any=1 ;; esac
+    done
+    [ "$any" = 1 ] || bad "Chain.cpp binds \"$name\" generically but no pass declares it"
+done
+
+[ "$checked" -gt 0 ] || { bad "found no .loc(\"...\") calls in Chain.cpp - has it moved?"; }
+[ "$fails" = 0 ] || { echo "uniformcheck: a loc() name and its pass's uniform declarations disagree"; exit 1; }
+echo "uniformcheck: every loc() name in Chain.cpp ($checked calls) is a uniform its pass declares"

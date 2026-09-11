@@ -218,6 +218,7 @@ tests/shadergate            every shader either mode loads, compiled (glslang, a
 tests/run-cli-test.sh       bin/hyprcrt in a sandboxed HOME: what `set` refuses and stores
 tests/run-install-test.sh   the README's plain-Hyprland install on a clean HOME, against a local stand-in release
 tests/presetcheck           the preset tables in bin/hyprcrt and Look.hpp are what presets/*.conf generates
+tests/uniformcheck          every loc("name") in Chain.cpp names a uniform its own pass's .frag declares
 bench/bench.c               the GPU cost benchmark behind the numbers above
 docs/PLAN.md                the feasibility analysis and plan this was built from
 docs/previews/              the presets on a test card

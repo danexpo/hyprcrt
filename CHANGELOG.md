@@ -80,6 +80,10 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - Transformers attached to unmapped windows; stale afterglow when an output re-entered scope;
   unescaped strings in `hyprctl crt status`; a runtime-loaded plugin waited for a config reload to
   block direct scanout.
+- The gate could not see a uniform name go stale on one side of a rename: `glUniform*` on the -1
+  `glGetUniformLocation` returns for an undeclared name is a silent no-op, so `Chain.cpp` and a pass's
+  `.frag` could disagree with no error (as happened with the `texelStep` rename). `tests/uniformcheck`
+  checks every `loc("name")` call against its pass's own `uniform` declarations, in `make gate` and CI.
 
 ## 0.1.0 (2026-09-05)
 
