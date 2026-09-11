@@ -33,6 +33,9 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- `hyprcrt install` no longer waits forever for the prebuilt download on a network that hangs instead of
+  refusing (a captive portal, a firewall that drops packets): `tools/crt-fetch` gives up after 20 s without a
+  byte and compiles instead, while a slow but working link still gets the library (`tests/run-install-test.sh`).
 - Lite mode `hyprcrt shot` saved the screen filtered twice on Hyprland 0.56, since the screenshot it filtered was
   already filtered; it now saves that screenshot. The README said plain screenshots are unfiltered in both
   modes; on 0.56 they hold the filtered picture, and it now says so (`tests/run-capture-test.sh`).

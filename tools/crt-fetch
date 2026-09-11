@@ -38,9 +38,12 @@ if [ -z "$hdr" ] && command -v hyprctl >/dev/null && [ -n "${HYPRLAND_INSTANCE_S
 fi
 [ -n "$hdr" ] || die "cannot tell which Hyprland commit is installed (no headers, no running compositor)"
 
+# Bounded, so a network that hangs (a captive portal, a firewall that drops packets) gives up about as soon as one that
+# refuses and crt-build compiles instead: 5 s to connect, 20 s without a byte, no retry once 20 s are spent. A stall
+# bound rather than a total one (--max-time), so a slow but live link still gets the 9 MB library.
 fetch() { # url dest
-    if command -v curl >/dev/null; then curl -fsSL --retry 2 -o "$2" "$1"
-    elif command -v wget >/dev/null; then wget -q -O "$2" "$1"
+    if command -v curl >/dev/null; then curl -fsSL --connect-timeout 5 --speed-time 20 --retry 2 --retry-max-time 20 -o "$2" "$1"
+    elif command -v wget >/dev/null; then wget -q --timeout=20 --tries=1 -O "$2" "$1"
     else die "curl or wget is required"; fi
 }
 

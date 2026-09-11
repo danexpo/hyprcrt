@@ -26,7 +26,7 @@ jobs:
     steps:
       - name: Install toolchain and Hyprland headers
         run: |
-          pacman -Syu --noconfirm --needed base-devel git pkgconf hyprland lua mesa github-cli
+          pacman -Syu --noconfirm --needed base-devel git pkgconf hyprland lua mesa github-cli python wget # the install test's hung-network cases
       - uses: actions/checkout@v4
       - name: Build
         run: make -C plugin all -j"$(nproc)" OPT="-O2"

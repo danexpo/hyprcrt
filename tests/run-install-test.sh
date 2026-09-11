@@ -4,7 +4,8 @@
 # A local directory stands in for the GitHub "prebuilt" release: SHA256SUMS plus the library, named after the commit
 # the installed Hyprland headers carry. So the prebuilt path runs end to end offline: crt-fetch --check finds that
 # commit, the download is verified, nothing compiles, and the files the README promises are where it says, inside a
-# time a person would wait. A release whose checksum does not match must be refused. The real release URL is not
+# time a person would wait. A release whose checksum does not match must be refused, and a network that hangs rather than
+# refuses must be given up on within half a minute (loopback listeners that never answer). The real release URL is not
 # reached (that half waits on the GitHub remote). Nothing touches the live session: `env -i`, no instance signature.
 # MIT (c) 2026 Dan Expo.
 set -euo pipefail
@@ -79,5 +80,63 @@ else
     bad "the checksum mismatch: $out; $(find "$data" 2>/dev/null | tr '\n' ' ')"
 fi
 
+# a network that hangs instead of refusing (a captive portal, a firewall that drops packets) must fall through to a local
+# compile as a refused one does, not stall the install: two loopback listeners stand in for it, one that takes the
+# connection and never answers, one whose accept queue is full so the connect itself goes unanswered. crt-fetch against
+# each, with curl and then with wget (curl off the PATH), says no release is reachable (exit 3); the outer timeout makes a
+# lost timeout a FAIL here rather than a gate that never returns. The four run side by side: they only wait.
+hang=30
+if ! command -v python3 >/dev/null || ! command -v wget >/dev/null; then
+    bad "the hung-network cases need python3 and wget on the PATH"
+else
+    listeners=""
+    trap 'kill $listeners 2>/dev/null || true; rm -rf "$sb"' EXIT
+    for mode in silent full; do
+        python3 -c '
+import socket, sys, time
+s = socket.socket(); s.bind(("127.0.0.1", 0)); s.listen(0 if sys.argv[1] == "full" else 8)
+held = []
+if sys.argv[1] == "full":  # connections nobody accepts fill the queue, so the kernel drops further SYNs
+    for _ in range(2):
+        c = socket.socket(); c.setblocking(False); c.connect_ex(s.getsockname()); held.append(c)
+    time.sleep(0.2)
+print(s.getsockname()[1], flush=True)
+time.sleep(float(sys.argv[2]))' "$mode" $((hang + 10)) > "$sb/$mode.port" &
+        listeners="$listeners $!"
+    done
+    nocurl=$sb/nocurl
+    mkdir -p "$nocurl"
+    IFS=: read -ra dirs <<< "$PATH"
+    for d in "${dirs[@]}"; do [ -d "$d" ] && find "$d" -maxdepth 1 ! -type d ! -name curl -exec ln -s -t "$nocurl" {} + 2>/dev/null || true; done
+    env -i PATH="$nocurl" bash -c 'command -v curl' >/dev/null && bad "curl is still on the wget cases' PATH"
+    for _ in $(seq 50); do [ -s "$sb/silent.port" ] && [ -s "$sb/full.port" ] && break; sleep 0.1; done
+    fetchhang() { # case listener PATH
+        local rc=0 t0 out
+        t0=$(date +%s%N)
+        out=$(env -i PATH="$3" HOME="$h" XDG_RUNTIME_DIR="$sb/run" HYPRCRT_RELEASE_URL="http://127.0.0.1:$(cat "$sb/$2.port")" timeout "$hang" "$src/tools/crt-fetch" 2>&1) || rc=$?
+        printf '%s %s %s\n' "$rc" "$(( ($(date +%s%N) - t0) / 1000000 ))" "$out" > "$sb/hang-$1"
+    }
+    runs=""
+    for c in curl-silent curl-full wget-silent wget-full; do
+        [ "${c%%-*}" = curl ] && p=$PATH || p=$nocurl
+        fetchhang "$c" "${c#*-}" "$p" &
+        runs="$runs $!"
+    done
+    wait $runs
+    for c in curl-silent curl-full wget-silent wget-full; do
+        rc="" ms="" out=""
+        read -r rc ms out < "$sb/hang-$c" || true
+        [ "${c#*-}" = silent ] && what="takes the connection and never answers" || what="never completes the connect"
+        if [ "$rc" = 3 ] && [[ $out == *"no prebuilt release reachable"* ]]; then
+            ok "${c%%-*}, a server that $what: crt-fetch gave up in ${ms} ms (exit 3, so crt-build compiles)"
+        elif [ "$rc" = 124 ]; then
+            bad "${c%%-*}, a server that $what: crt-fetch still waiting after ${hang} s"
+        else
+            bad "${c%%-*}, a server that $what: exit $rc after ${ms} ms: $out"
+        fi
+    done
+    kill $listeners 2>/dev/null || true
+fi
+
 [ "$fails" -eq 0 ] || { echo "install: $fails failure(s)"; exit 1; }
-echo "install: the README's install on a clean HOME took the verified prebuilt for ${hdr:0:12}, compiled nothing, refused a bad checksum"
+echo "install: the README's install on a clean HOME took the verified prebuilt for ${hdr:0:12}, compiled nothing, refused a bad checksum, and gave up on a hung network"
