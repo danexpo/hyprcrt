@@ -33,6 +33,8 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- The README says plainly that the GitHub repository and its prebuilt releases are not published yet, and
+  what `hyprcrt install` needs meanwhile.
 - The AUR package depends on jq, which the Omarchy menu's check marks and the Waybar module call; it was optional,
   and the Waybar module showed nothing without it (`make json` checks it).
 - Lite mode no longer takes knobs it cannot use: `set scope`, `low_power`, `pitch_fullscreen`, `match`,
