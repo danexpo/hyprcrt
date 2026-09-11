@@ -121,6 +121,10 @@ hyprcrt set media '^(mpv|vlc)$' # what scope auto treats as a picture when windo
 hyprcrt shot ~/crt.png         # the filtered screen as an image (plain screenshots are unfiltered)
 hyprcrt power auto             # low-power profile while a battery is discharging (on|off to force)
 hyprcrt plugin status          # built for which Hyprland, loaded, disabled by the crash guard?
+hyprcrt mode                   # plugin | lite: which mode is running
+hyprcrt guard                  # the crash-loop check the loader makes at start (the shell service runs it)
+hyprcrt gen television gain=1.2 # print the lite-mode shader for a preset plus key=value overrides
+hyprcrt menu                   # add Style > CRT filter to the Omarchy menu (install does it for you)
 hyprcrt dump /tmp/frame.ppm    # the next filtered frame, exactly as sent to the display (full mode)
 ```
 

@@ -62,6 +62,10 @@ printf 'pitch_fullscreen=2\nmedia=^(mpv|my player)$\n' >> "$conf"
 run set lines 2 >/dev/null
 grep -qx 'pitch_fullscreen=2' "$conf" && grep -Fqx 'media=^(mpv|my player)$' "$conf" && ok "full-mode keys survive a lite write" || bad "a lite write dropped pitch_fullscreen/media: $(tr '\n' ' ' < "$conf")"
 
+# gen takes a preset by name, as its help says, and refuses one it does not know
+run gen television | grep -qx '#define CURVE 1' && ok "hyprcrt gen television is the television shader" || bad "hyprcrt gen television did not generate the television preset"
+if run gen nosuch >/dev/null 2>&1; then bad "hyprcrt gen nosuch was accepted"; else ok "hyprcrt gen nosuch refused"; fi
+
 # a state file written before the check (or by hand) with gain=0 must still not render black
 sed -i 's/^gain=.*/gain=0/' "$conf"
 run reload >/dev/null 2>&1 || bad "hyprcrt reload failed on a gain=0 state.conf"

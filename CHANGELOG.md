@@ -28,6 +28,8 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- `hyprcrt gen television` generated the default shader instead of the preset; a preset name now works
+  as `--help` says, and an unknown one is refused.
 - Full mode no longer forgets: a preset, a knob or `hyprcrt off` used to be lost at the next `hyprctl reload`
   or restart. Both modes now share `~/.config/hyprcrt/state.conf` (the old `lite.conf` is moved), which the
   plugin applies at load and after every config reload; its values win over `plugin:crt:*`.

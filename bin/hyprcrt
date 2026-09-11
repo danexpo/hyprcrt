@@ -392,7 +392,14 @@ case "$cmd" in
     power) power "$@" ;;
     guard) guard ;;
     plugin) plugin_cmd "$@" ;;
-    gen) exec "$(tool crt-gen)" "$@" ;;
+    gen)
+        # a preset by name, as `preset` takes it, or a preset file; then key=value overrides
+        if [ $# -gt 0 ] && [ ! -f "$1" ] && [[ $1 != *=* ]]; then
+            pf=""; for d in "$data/presets" "$root/presets"; do [ -f "$d/$1.conf" ] && pf=$d/$1.conf && break; done
+            [ -n "$pf" ] || die "unknown preset $1 (plain|scanlines|monitor|television, a preset file, or key=value)"
+            shift; set -- "$pf" "$@"
+        fi
+        exec "$(tool crt-gen)" "$@" ;;
     build) exec "$(tool crt-build)" "$@" ;;
     install)
         mkdir -p "$data"
