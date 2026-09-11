@@ -230,7 +230,8 @@ uninstall() {
     [ "$live" = 0 ] || hypr eval 'hl.config({ decoration = { screen_shader = "" }, debug = { damage_tracking = 2 } })' >/dev/null || true
     rm -rf "$data" "$conf" "$state_dir"
     local cfg=${XDG_CONFIG_HOME:-$HOME/.config}
-    rm -f "$cfg/omarchy/hooks/post-update.d/hyprcrt-rebuild"
+    # omarchy hook install writes under $HOME/.config whatever XDG_CONFIG_HOME says
+    rm -f "$cfg/omarchy/hooks/post-update.d/hyprcrt-rebuild" "$HOME/.config/omarchy/hooks/post-update.d/hyprcrt-rebuild"
     local menu=$cfg/omarchy/extensions/omarchy-menu.jsonc
     if [ -f "$menu" ] && grep -q '"style\.crt' "$menu"; then
         python3 - "$menu" <<'PY' || echo "hyprcrt: could not edit $menu; remove the \"style.crt\" entries by hand" >&2
