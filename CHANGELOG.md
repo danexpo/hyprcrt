@@ -48,6 +48,10 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - The gate compiles every shader (four presets, seven plugin passes) through glslangValidator and the
   GPU, and the QML lint can fail; the halation passes' `step` uniform, which shadowed a GLSL built-in
   that stricter compilers reject, is now `texelStep`.
+- The gate (and CI's build job) runs the README's plain-Hyprland install on a clean `HOME` against a local
+  stand-in for the prebuilt release (`tests/run-install-test.sh`): the verified library and every file
+  the README names land where it says, in well under 20 s, nothing compiles, and a checksum mismatch
+  installs nothing.
 - Preset buttons in the bar panel are a 2x2 grid, not a single row of four: "Scanlines" and
   "Television" no longer overflow their buttons (cells go from ~86 px to ~177 px wide).
 - Building over a plugin the compositor had mapped could crash Hyprland during `plugin unload`:

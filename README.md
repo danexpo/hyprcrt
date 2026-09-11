@@ -213,7 +213,7 @@ docs/previews/              the presets on a test card
 ## Testing
 
 ```sh
-make gate                             # the CI gate: plugin build, every shader compiled, the CLI, shell/lua/json/qml
+make gate                             # the CI gate: plugin build, every shader compiled, the CLI, the install, shell/lua/json/qml
 tests/run-nested.sh auto monitor 0 &  # a nested Hyprland with the plugin loaded (scope, preset, pitch)
 hyprctl -i "$(cat tests/out/nested.sig)" crt status
 hyprctl -i "$(cat tests/out/nested.sig)" crt dump /tmp/out.ppm   # look at the filtered frame

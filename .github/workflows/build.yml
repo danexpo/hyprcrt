@@ -39,6 +39,8 @@ jobs:
           mkdir -p dist
           cp plugin/out/hyprcrt.so "dist/hyprcrt-$commit.so"
           (cd dist && sha256sum "hyprcrt-$commit.so" > "hyprcrt-$commit.so.sha256")
+      - name: The README's install on a clean HOME takes this library as a verified prebuilt
+        run: tests/run-install-test.sh plugin/out/hyprcrt.so
       - uses: actions/upload-artifact@v4
         with:
           name: hyprcrt-plugin-so
@@ -97,9 +99,9 @@ jobs:
         run: pacman -Syu --noconfirm --needed shellcheck lua jq python
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck -S warning -e SC1091,SC2016 bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh
+        run: shellcheck -S warning -e SC1091,SC2016 bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh
       - name: The CLI in a sandboxed HOME (what set refuses and stores)
-        run: tests/run-cli-test.sh tests/lib-nested.sh
+        run: tests/run-cli-test.sh
       - name: Lua syntax
         run: for f in lua/loader.lua omarchy-plugin/bindings.lua contrib/hyprland/hyprcrt.lua tests/nested.lua tests/loader-test.lua; do luac -p "$f"; done
       - name: JSON and JSONC
