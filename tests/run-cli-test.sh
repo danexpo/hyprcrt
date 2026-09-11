@@ -55,10 +55,23 @@ refused "pitch_fullscreen must be an integer 1-8" set pitch_fullscreen 0
 refused "textsafe must be 0 or 1" set textsafe maybe
 stored gain=1.5 set gain 1.5
 stored gain=.5 set gain .5
+run status | python3 -c 'import json, sys; json.load(sys.stdin)' 2>/dev/null && ok "lite status is JSON with gain=.5 stored" ||
+    bad "lite status is not JSON with gain=.5 stored: $(run status | grep -o '"gain":[^,]*')"
 stored pitch=0 set pitch 0
 stored mask_pitch=3 set mask_pitch 3
 stored textsafe=0 set textsafe off
 stored textsafe=1 set textsafe yes
+# keys lite mode cannot use are refused, not stored without effect (DR-F7): it filters the whole screen in one pass
+refused "scope needs the full-mode plugin" set scope all
+refused "low_power needs the full-mode plugin" set low_power 1
+refused "pitch_fullscreen needs the full-mode plugin" set pitch_fullscreen 2
+refused "match needs the full-mode plugin" set match '^mpv$'
+refused "media needs the full-mode plugin" set media '^mpv$'
+refused "low_power needs the full-mode plugin" power on
+refused "low_power needs the full-mode plugin" power auto
+[ "$(run power)" = false ] && ok "hyprcrt power in lite mode answers false" || bad "hyprcrt power in lite mode said '$(run power 2>&1)'"
+run status | python3 -c 'import json, sys; d = json.load(sys.stdin); sys.exit("scope" in d or "low_power" in d)' &&
+    ok "lite status has no scope and no low_power" || bad "lite status still reports scope/low_power: $(run status)"
 # keys only the plugin uses, written there by full mode, survive a lite-mode write
 printf 'pitch_fullscreen=2\nmedia=^(mpv|my player)$\n' >> "$conf"
 run set lines 2 >/dev/null

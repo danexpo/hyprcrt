@@ -7,11 +7,11 @@
 #   hyprcrt bypass on|off|toggle   hold-to-compare: the plain picture, without forgetting anything
 #   hyprcrt preset <plain|scanlines|monitor|television|custom>
 #   hyprcrt cycle [-1]
-#   hyprcrt set <key> <value>      keys: curve lines mask glow gamma sharp pitch pitch_fullscreen mask_pitch
-#                                        gain textsafe scope match media low_power
+#   hyprcrt set <key> <value>      keys: curve lines mask glow gamma sharp pitch mask_pitch gain textsafe;
+#                                  full mode only: pitch_fullscreen scope match media low_power
 #   hyprcrt demo [preset] [secs]   try a preset for a few seconds (10), then put everything back
 #   hyprcrt shot [file.png]        save the filtered screen as an image (screenshots are unfiltered otherwise)
-#   hyprcrt power auto|on|off      low-power profile (auto: on while a battery is discharging)
+#   hyprcrt power auto|on|off      low-power profile (auto: on while a battery is discharging; full mode)
 #   hyprcrt mode                   prints plugin | lite
 #   hyprcrt build                  install a prebuilt plugin for the running Hyprland, or build it (tools/crt-build)
 #   hyprcrt install                copy shaders/presets/tools to ~/.local/share/hyprcrt, then build
@@ -95,12 +95,15 @@ check_value() {
         textsafe|low_power) case "$v" in 0|1|true|false|on|off|yes|no) ;; *) die "$k must be 0 or 1 (true/false, on/off, yes/no)" ;; esac ;;
     esac
 }
+# a key only the plugin can use, asked for in lite mode: refused, and the state file keeps what it had
+lite_refuse() { die "$1 needs the full-mode plugin; lite mode filters the whole screen in one pass and changed nothing"; }
 # 1/true/on/yes -> 1, anything else -> 0 (the plugin's reading of a boolean)
 bool01() { case "$1" in 1|true|on|yes) echo 1 ;; *) echo 0 ;; esac; }
 
 # ---- the state file: key=value, defaults from the monitor preset -------------------------------------------
-# pitch_fullscreen, match and media only matter to the plugin; lite mode keeps them as it found them. match and
-# media are written only once set, so the plugin's own defaults (the long media list) are not frozen into the file
+# scope, low_power, pitch_fullscreen, match and media only matter to the plugin; lite mode refuses to set them and
+# keeps them as it found them. match and media are written only once set, so the plugin's own defaults (the long
+# media list) are not frozen into the file
 lite_read() {
     enabled=0 preset=monitor curve=0 lines=3 mask=1 glow=2 gamma=1 sharp=3 pitch=2 mask_pitch=1 gain=1.0 textsafe=1 scope=all low_power=0
     # shellcheck disable=SC2034  # read back through ${!k} in lite_write
@@ -191,9 +194,10 @@ disabled_reason() { [ -f "$disabled_file" ] && head -c 400 "$disabled_file" | tr
 lite_status() {
     lite_read
     local reason; reason=$(disabled_reason)
-    printf '{"mode":"lite","enabled":%s,"preset":"%s","scope":"%s","knobs":{"curve":%s,"lines":%s,"mask":%s,"glow":%s,"gamma":%s,"sharp":%s,"pitch":%s,"mask_pitch":%s,"gain":%s,"textsafe":%s},"low_power":%s,"plugin_built":%s,"plugin_disabled":%s,"shader":"%s"}\n' \
-        "$([ "$enabled" = 1 ] && echo true || echo false)" "$preset" "$scope" "$curve" "$lines" "$mask" "$glow" "$gamma" "$sharp" "$pitch" "$mask_pitch" "$gain" \
-        "$([ "$textsafe" = 1 ] && echo true || echo false)" "$([ "$low_power" = 1 ] && echo true || echo false)" "$([ -f "$so" ] && echo true || echo false)" \
+    # no scope and no low_power: lite mode filters the whole screen in one pass (the plugin's values stay in the file)
+    printf '{"mode":"lite","enabled":%s,"preset":"%s","knobs":{"curve":%s,"lines":%s,"mask":%s,"glow":%s,"gamma":%s,"sharp":%s,"pitch":%s,"mask_pitch":%s,"gain":%s,"textsafe":%s},"plugin_built":%s,"plugin_disabled":%s,"shader":"%s"}\n' \
+        "$([ "$enabled" = 1 ] && echo true || echo false)" "$preset" "$curve" "$lines" "$mask" "$glow" "$gamma" "$sharp" "$pitch" "$mask_pitch" "$(awk -v g="$gain" 'BEGIN { printf "%g", g + 0 }')" \
+        "$([ "$textsafe" = 1 ] && echo true || echo false)" "$([ -f "$so" ] && echo true || echo false)" \
         "$([ -n "$reason" ] && json_str "$reason" || echo null)" "$frag"
 }
 
@@ -342,16 +346,13 @@ power() {
     case "$want" in
         auto) on_battery && want=on || want=off ;;
         on|off) ;;
-        '') if plugin_loaded; then hypr crt status | json_get "['low_power']"; else lite_read; [ "$low_power" = 1 ] && echo true || echo false; fi; return 0 ;;
+        '') if plugin_loaded; then hypr crt status | json_get "['low_power']"; else echo false; fi; return 0 ;;
         *) die "usage: power auto|on|off" ;;
     esac
+    plugin_loaded || lite_refuse low_power
     local v=0; [ "$want" = on ] && v=1
-    if plugin_loaded; then
-        hypr crt set low_power "$v" >/dev/null
-        state_from_plugin set low_power "$v"
-    else
-        lite_read; low_power=$v; lite_write   # nothing to shed in a single pass; remembered for the plugin
-    fi
+    hypr crt set low_power "$v" >/dev/null
+    state_from_plugin set low_power "$v"
     : > "$stamp"
     echo "low_power $want"
 }
@@ -436,10 +437,10 @@ case "$cmd" in
                             case "$2" in +*|-*) v=$(( cur + $2 )) ;; *) v=$2 ;; esac
                             v=$(( ((v % (top + 1)) + top + 1) % (top + 1) ))
                             eval "$1=$v"; preset=custom ;;
-                        pitch|mask_pitch|gain|scope) eval "$1=\"\$2\"" ;;
-                        textsafe|low_power) eval "$1=$(bool01 "$2")" ;;
-                        pitch_fullscreen|match|media) echo "hyprcrt: $1 needs the full-mode plugin; remembered nothing" >&2 ;;
-                        *) die "unknown key $1 (lite mode keys: curve lines mask glow gamma sharp pitch mask_pitch gain textsafe scope low_power)" ;;
+                        pitch|mask_pitch|gain) eval "$1=\"\$2\"" ;;
+                        textsafe) textsafe=$(bool01 "$2") ;;
+                        scope|low_power|pitch_fullscreen|match|media) lite_refuse "$1" ;;
+                        *) die "unknown key $1 (lite mode keys: curve lines mask glow gamma sharp pitch mask_pitch gain textsafe)" ;;
                     esac ;;
                 reload) ;;
                 dump) die "dump needs the plugin (full mode)" ;;

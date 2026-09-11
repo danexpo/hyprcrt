@@ -32,6 +32,10 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- Lite mode no longer takes knobs it cannot use: `set scope`, `low_power`, `pitch_fullscreen`, `match`,
+  `media` and `hyprcrt power on|off|auto` exit 1 with "needs the full-mode plugin" and leave the state file as it was;
+  lite `status` carries no `scope` or `low_power`, and the panel hides those rows in lite mode instead of
+  showing a value that does nothing. `hyprcrt set gain .5` no longer makes lite `status` invalid JSON.
 - `hyprcrt gen television` generated the default shader instead of the preset; a preset name now works
   as `--help` says, and an unknown one is refused.
 - Full mode no longer forgets: a preset, a knob or `hyprcrt off` used to be lost at the next `hyprctl reload`

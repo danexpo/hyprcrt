@@ -23,7 +23,8 @@ Two modes, one product:
 | How | Hyprland's built-in `decoration:screen_shader`, one generated fragment pass | A Hyprland plugin (`plugin/`) that runs a seven-pass chain at the end of every frame |
 | Needs | nothing to build | a prebuilt library for your Hyprland (downloaded), or a one-minute build (`base-devel`) |
 | Afterglow, real halation | no (approximated from the beam taps) | yes |
-| Scope | whole screen | fullscreen windows and windowed media players (default), whole desktop, games, matching windows |
+| Scope | whole screen (`set scope`, `match` and `media` are refused) | fullscreen windows and windowed media players (default), whole desktop, games, matching windows |
+| Low-power profile | none to switch (`hyprcrt power` is refused) | half-resolution halation and a short afterglow |
 | Live knobs | yes (regenerates the shader) | yes |
 | GPU cost at 3440×1440 (RX 6900 XT) | 0.17 ms per frame | 0.19–0.71 ms per frame, only on frames that change |
 | Added display latency | none | none |
@@ -128,12 +129,12 @@ hyprcrt demo scanlines 10      # try a preset for ten seconds, then back to how 
 hyprcrt set lines 2            # curve 0/1 · lines 0-4 · mask 0-3 · glow 0-4 · gamma 0-4 · sharp 0-4
 hyprcrt set lines +1           # relative, wraps
 hyprcrt set pitch 3            # physical pixels per virtual scanline; 0 = auto
-hyprcrt set pitch_fullscreen 2 # auto pitch for fullscreen video/browsers: 3 = 480-line tube, 2 keeps small text readable
+hyprcrt set pitch_fullscreen 2 # fullscreen video/browsers: 3 = 480-line tube, 2 keeps text readable (full mode)
 hyprcrt set scope games        # auto | all | fullscreen | games | rules | window | off   (full mode)
 hyprcrt set match '^retroarch$' # class/title regex for scope rules and window          (full mode)
 hyprcrt set media '^(mpv|vlc)$' # what scope auto treats as a picture when windowed       (full mode)
 hyprcrt shot ~/crt.png         # the filtered screen as an image (plain screenshots are unfiltered)
-hyprcrt power auto             # low-power profile while a battery is discharging (on|off to force)
+hyprcrt power auto             # low-power profile while a battery is discharging, on|off to force (full mode)
 hyprcrt plugin status          # built for which Hyprland, loaded, disabled by the crash guard?
 hyprcrt mode                   # plugin | lite: which mode is running
 hyprcrt guard                  # the crash-loop check the loader makes at start (the shell service runs it)

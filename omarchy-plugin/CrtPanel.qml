@@ -328,12 +328,13 @@ Panel {
             width: parent.width
             wrapMode: Text.WordWrap
           }
+          // lite mode has no scope (its status carries none): the row is hidden rather than showing a made-up value
           Dropdown {
-            visible: root.pluginMode
+            visible: root.pluginMode && root.status.scope !== undefined
             width: parent.width
             label: "Apply to"
             options: Model.SCOPE_OPTIONS
-            value: String(root.status.scope || "fullscreen")
+            value: String(root.status.scope)
             foreground: root.fg
             fontFamily: root.ff
             onChanged: function(v) { root.setKnob("scope", v) }
@@ -360,7 +361,7 @@ Panel {
             onChanged: function(v) { root.setKnob("pitch_fullscreen", v) }
           }
           Toggle {
-            visible: root.pluginMode
+            visible: root.pluginMode && root.status.low_power !== undefined
             width: parent.width
             label: "Low power"
             description: "Half-resolution glow and a short afterglow, for laptops on battery"
