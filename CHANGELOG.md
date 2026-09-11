@@ -48,8 +48,9 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - The gate compiles every shader (four presets, seven plugin passes) through glslangValidator and the
   GPU, and the QML lint can fail; the halation passes' `step` uniform, which shadowed a GLSL built-in
   that stricter compilers reject, is now `texelStep`.
-- The gate (and CI) checks that the preset numbers copied into `bin/hyprcrt` and the plugin's `Look.hpp` agree
-  with `presets/*.conf` (`tests/presetcheck`), so a preset edited in one place cannot look different per mode.
+- Presets have one source: `tools/crt-presets` writes the preset tables in `bin/hyprcrt` and the plugin's
+  `Look.hpp` from `presets/*.conf`, and the gate (and CI) fails when either table is not what the data files
+  generate (`tests/presetcheck`), so a preset edited in one place cannot look different per mode.
 - The gate (and CI's build job) runs the README's plain-Hyprland install on a clean `HOME` against a local
   stand-in for the prebuilt release (`tests/run-install-test.sh`): the verified library and every file
   the README names land where it says, in well under 20 s, nothing compiles, and a checksum mismatch

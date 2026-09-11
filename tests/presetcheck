@@ -1,7 +1,8 @@
 #!/bin/bash
-# presetcheck - the preset numbers live as data in presets/*.conf and as two hand copies, the lite path's table in
-# bin/hyprcrt (lite_preset_knobs) and the plugin's in plugin/src/Look.hpp (applyPreset). Fails when a copy names a
-# different set of presets or a different value for any of the six knobs.
+# presetcheck - the preset numbers live as data in presets/*.conf and as two generated copies, the lite path's table
+# in bin/hyprcrt (lite_preset_knobs) and the plugin's in plugin/src/Look.hpp (applyPreset), written by
+# tools/crt-presets. Fails when a copy names a different set of presets or a different value for any of the six
+# knobs (read here independently of the generator), or when a table is not byte for byte what the generator writes.
 #   tests/presetcheck
 # MIT (c) 2026 Dan Expo.
 set -euo pipefail
@@ -57,5 +58,10 @@ for copy in shell cpp; do
         diff <(echo "$data") <(echo "$table") | sed -n 's/^</    presets\/*.conf:/p; s/^>/    '"${where//\//\\/}"':/p' || true
     fi
 done
-[ "$fails" = 0 ] || { echo "presets: $fails table(s) out of step with presets/*.conf"; exit 1; }
-echo "presets: bin/hyprcrt and Look.hpp carry the numbers in presets/*.conf"
+if out=$("$root/tools/crt-presets" --check 2>&1); then
+    echo "  ok   both tables are what tools/crt-presets writes"
+else
+    bad "the tables are not what tools/crt-presets writes:"; sed 's/^/    /' <<<"$out"
+fi
+[ "$fails" = 0 ] || { echo "presets: out of step with presets/*.conf; run tools/crt-presets and commit the three together"; exit 1; }
+echo "presets: bin/hyprcrt and Look.hpp carry the numbers in presets/*.conf, as tools/crt-presets writes them"

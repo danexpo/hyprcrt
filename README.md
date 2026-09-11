@@ -193,8 +193,9 @@ lua/loader.lua              sourced by Hyprland at start: full or lite mode, cra
 shaders/common.glsl         the tube model (shared by both modes)
 shaders/single/template.frag lite mode: one pass, knobs baked in by tools/crt-gen
 shaders/passes/*.frag       full mode: down, glow, halo_h, halo_v, beam, scan, glass
-presets/*.conf              the four presets
+presets/*.conf              the four presets; edit one, then tools/crt-presets writes the tables both modes read
 tools/crt-look, crt-gen     knobs → numbers, numbers → shader
+tools/crt-presets           presets/*.conf → the preset tables in bin/hyprcrt and plugin/src/Look.hpp
 tools/crt-fetch             download the prebuilt plugin for the installed Hyprland, verify, install
 tools/crt-build             fetch or build, install, wire up the loader
 plugin/                     the Hyprland plugin (C++23, MIT)
@@ -208,7 +209,7 @@ tests/lib-nested.sh         the launcher both use: signature and socket files, n
 tests/shadergate            every shader either mode loads, compiled (glslang, and the GPU where there is one)
 tests/run-cli-test.sh       bin/hyprcrt in a sandboxed HOME: what `set` refuses and stores
 tests/run-install-test.sh   the README's plain-Hyprland install on a clean HOME, against a local stand-in release
-tests/presetcheck           the preset tables in bin/hyprcrt and Look.hpp agree with presets/*.conf
+tests/presetcheck           the preset tables in bin/hyprcrt and Look.hpp are what presets/*.conf generates
 bench/bench.c               the GPU cost benchmark behind the numbers above
 docs/PLAN.md                the feasibility analysis and plan this was built from
 docs/previews/              the presets on a test card
