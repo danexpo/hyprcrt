@@ -82,7 +82,7 @@ struct SWindowState {
 
 struct SState {
     SConfig                                   cfg;
-    std::map<std::string, std::string>        overrides; // hyprctl crt set ... until the next config reload
+    std::map<std::string, std::string>        overrides; // hyprctl crt set ..., and the state file on top at every config reload
     std::unordered_map<MONITORID, UP<SMonitorState>> monitors;
     std::vector<SWindowState>                 windows;
     std::vector<CHyprSignalListener>          listeners;
@@ -648,10 +648,12 @@ static void reloadShaders() {
     damageAll();
 }
 
+static void applyStateFile();
+
 static void onConfigReloaded() {
     if (!g_state)
         return;
-    g_state->overrides.clear();
+    applyStateFile(); // what the hyprcrt command last set outlives the reload
     const auto dir = expandHome(g_state->cfg.shaderDir->value());
     const auto nd  = dir.empty() ? defaultShaderDir() : dir;
     if (nd != g_state->shaderDir) {
@@ -726,6 +728,71 @@ static std::string statusJson() {
                        g_state->windows.size(), g_state->weBlockedScanout ? "true" : "false", jsonEsc(g_state->shaderDir), jsonEsc(g_state->lastError), mons);
 }
 
+// the same ranges and messages as bin/hyprcrt's check_value: a bad value is refused, never stored; "" when it is fine
+static std::string valueError(const std::string& a, const std::string& b) {
+    if (a == "scope" && b != "auto" && b != "all" && b != "fullscreen" && b != "games" && b != "rules" && b != "window" && b != "off")
+        return "scope must be auto|all|fullscreen|games|rules|window|off";
+    const auto intIn = [&b](int lo, int hi) { return b.size() == 1 && b[0] >= '0' + lo && b[0] <= '0' + hi; };
+    if (a == "pitch" && !intIn(0, 8))
+        return "pitch must be an integer 0-8 (0 = auto)";
+    if (a == "pitch_fullscreen" && !intIn(1, 8))
+        return "pitch_fullscreen must be an integer 1-8";
+    if (a == "mask_pitch" && !intIn(1, 3))
+        return "mask_pitch must be an integer 1-3";
+    if (a == "gain") {
+        const bool shape = !b.empty() && b.find_first_not_of("0123456789.") == std::string::npos && std::ranges::count(b, '.') <= 1 && b != ".";
+        float      g     = 0.f;
+        try {
+            g = shape ? std::stof(b) : 0.f;
+        } catch (...) {}
+        if (!(g >= 0.25f && g <= 4.f))
+            return "gain must be a number 0.25-4";
+    }
+    if ((a == "textsafe" || a == "low_power") && b != "0" && b != "1" && b != "true" && b != "false" && b != "on" && b != "off" && b != "yes" && b != "no")
+        return a + " must be 0 or 1 (true/false, on/off, yes/no)";
+    if (isKnob(a) && !intIn(0, knobTop(a)))
+        return a + " must be an integer 0-" + std::to_string(knobTop(a));
+    return "";
+}
+
+// The state file the hyprcrt command keeps for both modes ($XDG_CONFIG_HOME/hyprcrt/state.conf, key=value):
+// what the user last chose. Applied at load and on top of every config reload, so a preset or `hyprcrt off`
+// survives both; plugin:crt:* values are the defaults underneath, and a bare `hyprctl crt ...` lasts until
+// the next reload. Lines that do not pass the same checks as `set` are skipped.
+static std::string stateFilePath() {
+    const char*       xc  = getenv("XDG_CONFIG_HOME");
+    const std::string dir = (xc && *xc ? std::string(xc) : expandHome("~/.config")) + "/hyprcrt";
+    std::error_code   ec;
+    if (!std::filesystem::exists(dir + "/state.conf", ec) && std::filesystem::exists(dir + "/lite.conf", ec))
+        return dir + "/lite.conf"; // its old name; bin/hyprcrt renames it the next time it runs
+    return dir + "/state.conf";
+}
+
+static void applyStateFile() {
+    std::ifstream f(stateFilePath());
+    if (!f.good())
+        return;
+    std::map<std::string, std::string> kv;
+    for (std::string line; std::getline(f, line);) {
+        const auto eq = line.find('=');
+        if (!line.empty() && line[0] != '#' && eq != std::string::npos)
+            kv[line.substr(0, eq)] = line.substr(eq + 1);
+    }
+    if (kv.contains("enabled"))
+        g_state->runtimeEnabled = kv["enabled"] == "1";
+    if (const auto p = kv["preset"]; p == "plain" || p == "scanlines" || p == "monitor" || p == "television" || p == "custom") {
+        g_state->overrides["preset"] = p;
+        for (auto* n : KNOBS) { // as `preset` does: a named preset brings its own knobs, custom takes the file's
+            g_state->overrides.erase(n);
+            if (p == "custom" && kv.contains(n) && valueError(n, kv[n]).empty())
+                g_state->overrides[n] = kv[n];
+        }
+    }
+    for (const char* k : {"pitch", "pitch_fullscreen", "mask_pitch", "gain", "textsafe", "scope", "low_power", "match", "media"})
+        if (kv.contains(k) && valueError(k, kv[k]).empty())
+            g_state->overrides[k] = kv[k];
+}
+
 static SDispatchResult applyCommand(const std::string& cmdline) {
     std::stringstream ss(cmdline);
     std::string       cmd, a, b;
@@ -795,27 +862,8 @@ static SDispatchResult applyCommand(const std::string& cmdline) {
             g_state->overrides[a] = std::to_string(((v % (top + 1)) + (top + 1)) % (top + 1));
         } else if (a == "pitch" || a == "pitch_fullscreen" || a == "mask_pitch" || a == "gain" || a == "textsafe" || a == "scope" || a == "match" || a == "media" || a == "monitors" ||
                    a == "enabled" || a == "block_scanout" || a == "halo_half" || a == "capture" || a == "glow_frames" || a == "low_power") {
-            if (a == "scope" && b != "auto" && b != "all" && b != "fullscreen" && b != "games" && b != "rules" && b != "window" && b != "off")
-                return {.success = false, .error = "scope must be auto|all|fullscreen|games|rules|window|off"};
-            // the same ranges and messages as bin/hyprcrt's check_value: a bad value is refused, never stored
-            const auto intIn = [&b](int lo, int hi) { return b.size() == 1 && b[0] >= '0' + lo && b[0] <= '0' + hi; };
-            if (a == "pitch" && !intIn(0, 8))
-                return {.success = false, .error = "pitch must be an integer 0-8 (0 = auto)"};
-            if (a == "pitch_fullscreen" && !intIn(1, 8))
-                return {.success = false, .error = "pitch_fullscreen must be an integer 1-8"};
-            if (a == "mask_pitch" && !intIn(1, 3))
-                return {.success = false, .error = "mask_pitch must be an integer 1-3"};
-            if (a == "gain") {
-                const bool shape = !b.empty() && b.find_first_not_of("0123456789.") == std::string::npos && std::ranges::count(b, '.') <= 1 && b != ".";
-                float      g     = 0.f;
-                try {
-                    g = shape ? std::stof(b) : 0.f;
-                } catch (...) {}
-                if (!(g >= 0.25f && g <= 4.f))
-                    return {.success = false, .error = "gain must be a number 0.25-4"};
-            }
-            if ((a == "textsafe" || a == "low_power") && b != "0" && b != "1" && b != "true" && b != "false" && b != "on" && b != "off" && b != "yes" && b != "no")
-                return {.success = false, .error = a + " must be 0 or 1 (true/false, on/off, yes/no)"};
+            if (const auto err = valueError(a, b); !err.empty())
+                return {.success = false, .error = err};
             // `set match/media` takes the rest of the line, so a regex may contain spaces
             if (a == "match" || a == "media") {
                 std::string rest;
@@ -930,6 +978,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         HyprlandAPI::addConfigValueV2(PHANDLE, v);
 
     g_state->shaderDir = defaultShaderDir();
+    applyStateFile();
 
     auto& ev = Event::bus()->m_events;
     g_state->listeners.push_back(ev.render.stage.listen([](eRenderStage s) { onRenderStage(s); }));

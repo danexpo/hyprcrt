@@ -124,7 +124,13 @@ hyprcrt plugin status          # built for which Hyprland, loaded, disabled by t
 hyprcrt dump /tmp/frame.ppm    # the next filtered frame, exactly as sent to the display (full mode)
 ```
 
-Full-mode defaults can also live in your Hyprland Lua config:
+`hyprcrt` remembers what you last chose in `~/.config/hyprcrt/state.conf`, one file for both modes: lite
+mode builds its shader from it, and the plugin applies it when it loads and after every `hyprctl reload`,
+so a preset or `hyprcrt off` survives reloads, restarts and a fall back to lite mode. `hyprctl crt …` on
+its own changes the running session until the next reload.
+
+Full-mode defaults can also live in your Hyprland Lua config; the state file, once `hyprcrt` has written
+it, wins over them (delete it to go back to the config's values):
 
 ```lua
 hl.config({

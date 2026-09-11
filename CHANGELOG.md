@@ -28,6 +28,9 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- Full mode no longer forgets: a preset, a knob or `hyprcrt off` used to be lost at the next `hyprctl reload`
+  or restart. Both modes now share `~/.config/hyprcrt/state.conf` (the old `lite.conf` is moved), which the
+  plugin applies at load and after every config reload; its values win over `plugin:crt:*`.
 - The nested test harness no longer opens a terminal or runs a start-up command inside the test session;
   it writes `tests/out/nested.sig` / `.wl` so every check is driven from the host, and killing the script
   stops the nested compositor.

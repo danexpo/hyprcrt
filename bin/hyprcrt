@@ -36,7 +36,9 @@ toggles=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/hypr
 cache=${XDG_CACHE_HOME:-$HOME/.cache}/hyprland
 # a tool from the installed copy when it is there, else from the source tree
 tool() { if [ -x "$data/tools/$1" ]; then echo "$data/tools/$1"; else echo "$root/tools/$1"; fi; }
-lite_state=$conf/lite.conf
+# what the user last chose, for both modes: lite mode builds its shader from it, the plugin applies it at load
+# and at every config reload, and the loader reads `enabled` from it (renamed from lite.conf, which is moved on first run)
+state_file=$conf/state.conf
 frag=$conf/current.frag
 so=$data/hyprcrt.so
 [ -e "$so" ] || { [ -e /usr/lib/hyprcrt/hyprcrt.so ] && so=/usr/lib/hyprcrt/hyprcrt.so; }
@@ -44,6 +46,7 @@ loader=$data/loader.lua
 disabled_file=$state_dir/plugin-disabled
 loaded_marker=$state_dir/plugin-loaded
 mkdir -p "$conf" "$state_dir"
+[ -f "$state_file" ] || [ ! -f "$conf/lite.conf" ] || mv -f "$conf/lite.conf" "$state_file"
 stamp=$state_dir/changed
 [ -f "$stamp" ] || : > "$stamp"   # the shell widget watches this file
 
@@ -92,18 +95,22 @@ check_value() {
 # 1/true/on/yes -> 1, anything else -> 0 (the plugin's reading of a boolean)
 bool01() { case "$1" in 1|true|on|yes) echo 1 ;; *) echo 0 ;; esac; }
 
-# ---- lite mode state: key=value, defaults from the monitor preset ----------------------------------------
+# ---- the state file: key=value, defaults from the monitor preset -------------------------------------------
+# pitch_fullscreen, match and media only matter to the plugin; lite mode keeps them as it found them. match and
+# media are written only once set, so the plugin's own defaults (the long media list) are not frozen into the file
 lite_read() {
     enabled=0 preset=monitor curve=0 lines=3 mask=1 glow=2 gamma=1 sharp=3 pitch=2 mask_pitch=1 gain=1.0 textsafe=1 scope=all low_power=0
-    if [ -f "$lite_state" ]; then
+    # shellcheck disable=SC2034  # read back through ${!k} in lite_write
+    pitch_fullscreen='' match='' media=''
+    if [ -f "$state_file" ]; then
         while IFS='=' read -r k v; do
             case "$k" in ''|\#*) continue ;; esac
-            case "$k" in enabled|preset|curve|lines|mask|glow|gamma|sharp|pitch|mask_pitch|gain|textsafe|scope|low_power) eval "$k=\"\$v\"" ;; esac
-        done < "$lite_state"
+            case "$k" in enabled|preset|curve|lines|mask|glow|gamma|sharp|pitch|pitch_fullscreen|mask_pitch|gain|textsafe|scope|low_power|match|media) eval "$k=\"\$v\"" ;; esac
+        done < "$state_file"
     fi
 }
 lite_write() {
-    cat > "$lite_state.tmp" <<EOT
+    cat > "$state_file.tmp" <<EOT
 enabled=$enabled
 preset=$preset
 curve=$curve
@@ -119,7 +126,9 @@ textsafe=$textsafe
 scope=$scope
 low_power=$low_power
 EOT
-    mv -f "$lite_state.tmp" "$lite_state"
+    local k
+    for k in pitch_fullscreen match media; do [ -z "${!k}" ] || printf '%s=%s\n' "$k" "${!k}" >> "$state_file.tmp"; done
+    mv -f "$state_file.tmp" "$state_file"
 }
 lite_preset_knobs() {
     case "$1" in
@@ -150,6 +159,28 @@ lite_apply() {
     fi
     lite_live
     ensure_loader
+}
+# full mode: after a command, what the plugin now shows becomes the state file, so a config reload, a restart
+# or a fall back to lite mode brings back the same filter. state_from_plugin <cmd> [args...]
+state_from_plugin() {
+    local st; st=$(hypr crt status) || return 0
+    lite_read
+    eval "$(printf '%s' "$st" | python3 -c '
+import json, shlex, sys
+d = json.load(sys.stdin); k = d["knobs"]
+b = lambda v: "1" if v else "0"
+out = {"preset": d["preset"], "scope": d["scope"], "low_power": b(d["low_power"]), "textsafe": b(k["textsafe"])}
+if not d["bypass"]:  # bypass hides the filter without turning it off
+    out["enabled"] = b(d["enabled"])
+for n in ("curve", "lines", "mask", "glow", "gamma", "sharp", "pitch", "pitch_fullscreen", "mask_pitch"):
+    out[n] = str(k[n])
+out["gain"] = ("%.3f" % k["gain"]).rstrip("0").rstrip(".")
+print("\n".join(n + "=" + shlex.quote(v) for n, v in out.items()))
+' 2>/dev/null)" || return 0
+    if [ "$1" = set ] && { [ "${2:-}" = match ] || [ "${2:-}" = media ]; }; then
+        printf -v "$2" '%s' "${*:3}"
+    fi
+    lite_write
 }
 disabled_reason() { [ -f "$disabled_file" ] && head -c 400 "$disabled_file" | tr -d '\n' || true; }
 lite_status() {
@@ -259,6 +290,7 @@ power() {
     local v=0; [ "$want" = on ] && v=1
     if plugin_loaded; then
         hypr crt set low_power "$v" >/dev/null
+        state_from_plugin set low_power "$v"
     else
         lite_read; low_power=$v; lite_write   # nothing to shed in a single pass; remembered for the plugin
     fi
@@ -309,6 +341,7 @@ case "$cmd" in
         if plugin_loaded; then
             out=$(hypr crt "$cmd" "$@") || true
             case "$out" in error:*) die "${out#error: }" ;; esac
+            case "$cmd" in dump|reload|bypass) ;; *) state_from_plugin "$cmd" "$@" ;; esac
             : > "$stamp"
             [ "$cmd" = dump ] || [ "$cmd" = reload ] || hypr crt status
         else

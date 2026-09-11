@@ -25,9 +25,9 @@ local function exists(path)
   return false
 end
 
--- lite.conf: key=value lines written by the hyprcrt command
+-- state.conf: key=value lines written by the hyprcrt command for both modes (lite.conf in earlier builds)
 local lite = {}
-for line in (readfile(conf .. "/lite.conf") or ""):gmatch("[^\n]+") do
+for line in (readfile(conf .. "/state.conf") or readfile(conf .. "/lite.conf") or ""):gmatch("[^\n]+") do
   local k, v = line:match("^([%w_]+)=(.*)$")
   if k then lite[k] = v end
 end
