@@ -33,6 +33,10 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- Lite mode no longer leaves faint boxes or cut-off glow around a hovered button or anything else that redraws
+  on its own. With its shader on it asks Hyprland for whole-monitor redraws (`debug:damage_tracking 1`, only
+  when something changed), and the curved presets no longer redraw a static desktop at every refresh
+  (`tests/run-damage-test.sh`).
 - The README says plainly that the GitHub repository and its prebuilt releases are not published yet, and
   what `hyprcrt install` needs meanwhile.
 - The AUR package depends on jq, which the Omarchy menu's check marks and the Waybar module call; it was optional,

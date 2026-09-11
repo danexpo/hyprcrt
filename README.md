@@ -211,6 +211,7 @@ packaging/aur               PKGBUILD
 tests/shadercheck.c         compile a screen shader offscreen, run an image through it (previews, lite-mode shots)
 tests/run-nested.sh         a nested Hyprland with the freshly built plugin (never test in the live session)
 tests/run-loader-test.sh    a nested Hyprland wired only through the loader, for the crash-loop guard
+tests/run-damage-test.sh    lite mode in a nested Hyprland inside another: no stale shading around what redraws
 tests/lib-nested.sh         the launcher both use: signature and socket files, no shell inside, cleanup
 tests/shadergate            every shader either mode loads, compiled (glslang, and the GPU where there is one)
 tests/run-cli-test.sh       bin/hyprcrt in a sandboxed HOME: what `set` refuses and stores
@@ -230,6 +231,7 @@ hyprctl -i "$(cat tests/out/nested.sig)" crt status
 hyprctl -i "$(cat tests/out/nested.sig)" crt dump /tmp/out.ppm   # look at the filtered frame
 WAYLAND_DISPLAY="$(cat tests/out/nested.wl)" imv docs/previews/source.png   # a client inside the nested session
 tests/run-loader-test.sh &            # the loader alone (tests/out/loader.sig); a crash report shows the guard
+tests/run-damage-test.sh              # lite mode's redraws, about a minute: exits 0 when nothing is left stale
 ```
 
 Both nested scripts are driven from the host only and never start a shell inside the nested session;
@@ -252,9 +254,12 @@ halation, which the single pass can only approximate.
   filtered frame as an image.
 - The hardware cursor is on its own plane and stays crisp; set `cursor:no_hardware_cursors = true`
   in Hyprland if you want it filtered too.
-- Curvature is a non-local remap. Lite mode turns damage tracking off while it is on (full frames,
-  0.17 ms each on this GPU); full mode always renders full frames while the filter is active on an
-  output, and only when something changed or the afterglow is still decaying.
+- The filter reads neighbouring pixels, and curvature moves them, so redrawing only the part of the
+  screen that changed would leave faint boxes around it. Lite mode therefore asks Hyprland for
+  whole-monitor redraws while its shader is on (`debug:damage_tracking 1`: 0.17 ms per redraw at
+  3440×1440 on this GPU, against 0.05 ms for a quarter of the screen, and still only when something
+  changed); full mode always renders full frames while the filter is active on an output, and only
+  when something changed or the afterglow is still decaying.
 - Direct scanout (off by default in Omarchy) bypasses any compositor filter. Full mode blocks it while
   enabled; lite mode cannot.
 - HDR outputs are untested; the plugin sees the frame before colour management.

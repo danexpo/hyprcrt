@@ -46,8 +46,11 @@ which is why full mode blocks it while enabled (`plugin:crt:block_scanout`).
 
 Full mode renders only when Hyprland renders: a frame that changes, plus `glow_frames` (default 12)
 extra frames after the last change so the afterglow can decay. A static desktop costs nothing. Lite
-mode is damage-tracked unless curvature is on, in which case `debug:damage_tracking` is set to 0
-while the filter is enabled (a full 0.17 ms frame per redraw, still only when something redraws).
+mode sets `debug:damage_tracking 1` while its shader is on: any change redraws the whole monitor (a
+0.168 ms frame at 3440×1440 in the table above, against 0.046 ms for a 25 % rect), and a static desktop
+still draws nothing. Partial redraws left stale shading around what changed (C1, `tests/run-damage-test.sh`).
+Setting 0 instead would draw every refresh even on a static desktop (`shouldRenderMonitor` in
+Hyprland's `Renderer.cpp` returns true for it unconditionally).
 
 ## How to re-measure
 

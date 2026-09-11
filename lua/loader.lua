@@ -62,9 +62,10 @@ if full then
   -- never stack the lite shader on top of the plugin
   hl.config({ decoration = { screen_shader = "" }, debug = { damage_tracking = 2 } })
 elseif lite.enabled == "1" and exists(conf .. "/current.frag") then
-  -- curvature is a non-local remap: partial redraws would show seams, so full frames while it is on
-  local dt = (lite.curve == "1") and 0 or 2
-  hl.config({ decoration = { screen_shader = conf .. "/current.frag" }, debug = { damage_tracking = dt } })
+  -- Hyprland shades only the damaged rect, but the shader reads its neighbours (and curvature moves pixels), so a
+  -- partial redraw leaves stale shading around what changed: redraw the whole monitor whenever anything changes
+  -- (damage_tracking 1). Unlike 0, it draws nothing while the screen is still. tests/run-damage-test.sh
+  hl.config({ decoration = { screen_shader = conf .. "/current.frag" }, debug = { damage_tracking = 1 } })
 else
   hl.config({ decoration = { screen_shader = "" }, debug = { damage_tracking = 2 } })
 end

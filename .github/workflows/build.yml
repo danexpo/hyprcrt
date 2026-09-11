@@ -99,7 +99,7 @@ jobs:
         run: pacman -Syu --noconfirm --needed shellcheck lua jq python
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck -S warning -e SC1091,SC2016 bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh tests/presetcheck tools/crt-presets
+        run: shellcheck -S warning -e SC1091,SC2016 bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh tests/presetcheck tools/crt-presets tests/run-damage-test.sh
       - name: The preset tables in bin/hyprcrt and Look.hpp agree with presets/*.conf
         run: tests/presetcheck
       - name: The CLI in a sandboxed HOME (what set refuses and stores)

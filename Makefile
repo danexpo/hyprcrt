@@ -1,6 +1,6 @@
 # hyprcrt - the gate, in one word. Mirrors .github/workflows/build.yml so a piece is green here
 # before CI sees it. GPU compiles and the live behaviour are proved in tests/run-nested.sh.
-SH_FILES  = bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh tests/presetcheck tools/crt-presets
+SH_FILES  = bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh tests/presetcheck tools/crt-presets tests/run-damage-test.sh
 LUA_FILES = lua/loader.lua omarchy-plugin/bindings.lua contrib/hyprland/hyprcrt.lua tests/nested.lua tests/loader-test.lua
 GATE_OUT  = tests/out/gate
 # Arch ships qmllint outside PATH, in /usr/lib/qt6/bin

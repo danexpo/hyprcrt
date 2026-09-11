@@ -152,9 +152,9 @@ lite_preset_knobs() {
 # `hyprctl eval` runs a chunk in the live config state (not persistent); the loader re-applies it on reload
 lite_live() {
     if [ "$enabled" = 1 ]; then
-        # curvature is a non-local remap: partial redraws would show seams, so ask for full frames while it is on
-        local dt=2; [ "$curve" = 1 ] && dt=0
-        hypr eval "$(printf 'hl.config({ decoration = { screen_shader = "%s" }, debug = { damage_tracking = %d } })' "$frag" "$dt")" >/dev/null || true
+        # the shader reads neighbours and curvature moves pixels, so a partial redraw leaves stale shading around what
+        # changed: whole-monitor damage while it is on, drawn only when something changed (tests/run-damage-test.sh)
+        hypr eval "$(printf 'hl.config({ decoration = { screen_shader = "%s" }, debug = { damage_tracking = 1 } })' "$frag")" >/dev/null || true
     else
         hypr eval 'hl.config({ decoration = { screen_shader = "" }, debug = { damage_tracking = 2 } })' >/dev/null || true
     fi
