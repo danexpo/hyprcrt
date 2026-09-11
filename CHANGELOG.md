@@ -84,6 +84,11 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
   `glGetUniformLocation` returns for an undeclared name is a silent no-op, so `Chain.cpp` and a pass's
   `.frag` could disagree with no error (as happened with the `texelStep` rename). `tests/uniformcheck`
   checks every `loc("name")` call against its pass's own `uniform` declarations, in `make gate` and CI.
+- `crt dump` (full mode) no longer queues silently when no monitor is being filtered (`scope window`
+  with no match, `scope off`, a bypass held): it refuses with an error naming why, and never writes a
+  stray file later when a monitor next gets the chain. The frame it does write is written beside the
+  path and renamed into place, so `hyprcrt shot` (which starts reading as soon as the file is
+  non-empty) can no longer see a partial frame.
 
 ## 0.1.0 (2026-09-05)
 

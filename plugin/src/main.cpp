@@ -396,13 +396,21 @@ class CCrtPassElement : public IPassElement {
                 for (size_t i = 0; i < fpx.size(); i++)
                     px[i] = static_cast<unsigned char>(std::clamp(fpx[i], 0.f, 1.f) * 255.f + 0.5f);
             }
-            if (FILE* f = fopen(g_state->dumpPath.c_str(), "wb")) {
+            // written beside the target and renamed into place, so a reader (hyprcrt shot) that starts as soon
+            // as the file is non-empty never sees a partial frame
+            const std::string tmpPath = g_state->dumpPath + ".tmp";
+            if (FILE* f = fopen(tmpPath.c_str(), "wb")) {
                 fprintf(f, "P6\n%d %d\n255\n", W, H);
                 for (int y = 0; y < H; y++)
                     for (int x = 0; x < W; x++)
                         fwrite(&px[(static_cast<size_t>(y) * W + x) * 4], 1, 3, f);
                 fclose(f);
-                notify("dumped " + g_state->dumpPath);
+                if (rename(tmpPath.c_str(), g_state->dumpPath.c_str()) == 0)
+                    notify("dumped " + g_state->dumpPath);
+                else {
+                    notify("cannot write " + g_state->dumpPath, true);
+                    std::filesystem::remove(tmpPath);
+                }
             } else
                 notify("cannot write " + g_state->dumpPath, true);
             g_state->dumpPath.clear();
@@ -881,6 +889,11 @@ static SDispatchResult applyCommand(const std::string& cmdline) {
     if (cmd == "dump") {
         if (a.empty())
             return {.success = false, .error = "usage: dump <file.ppm>"};
+        bool anyActive = false;
+        for (auto& [id, st] : g_state->monitors)
+            anyActive = anyActive || st->active;
+        if (!anyActive)
+            return {.success = false, .error = "no monitor is being filtered right now (scope/preset/bypass); nothing to dump"};
         g_state->dumpPath = expandHome(a);
         damageAll();
         return {};
