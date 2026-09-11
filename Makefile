@@ -8,7 +8,7 @@ QMLLINT  ?= $(or $(shell command -v qmllint 2>/dev/null),$(wildcard /usr/lib/qt6
 # syntax and everything else qmllint checks, minus what needs omarchy-shell's qs.* modules to resolve
 QMLLINT_FLAGS = --import disable --unresolved-type disable --unqualified disable --required disable --signal-handler-parameters disable -W 0
 
-.PHONY: gate plugin shaders presets cli install-test shell lua json qml shadercheck clean
+.PHONY: gate plugin shaders presets cli install-test shell lua json qml shadercheck bench clean
 
 gate: plugin shaders presets cli install-test shell lua json qml
 	@echo "gate: green - plugin built, every shader compiles, the preset tables agree with presets/*.conf, the CLI refuses bad values, the README's install works on a clean HOME, shell/lua/json/qml checks passed"
@@ -54,6 +54,13 @@ qml:
 	@if [ -n "$(QMLLINT)" ]; then for f in omarchy-plugin/*.qml; do $(QMLLINT) $(QMLLINT_FLAGS) $$f || exit 1; done; echo "qml: linted"; \
 	else echo "qml: qmllint not installed, skipped (CI runs it)"; fi
 
+# the offscreen GPU cost table in docs/perf.md: one resolution after the other, never in parallel (needs /dev/dri)
+BENCH_SIZES ?= 3440x1440 3840x2160
+bench: bench/bench
+	@for r in $(BENCH_SIZES); do bench/bench $${r%x*} $${r#*x} || exit 1; done
+bench/bench: bench/bench.c
+	gcc -O2 $< -o $@ $$(pkg-config --cflags --libs egl glesv2 gbm) -lm
+
 # the offscreen shader runner, for rendering docs/previews (see README)
 shadercheck: tests/shadercheck
 tests/shadercheck: tests/shadercheck.c
@@ -61,4 +68,4 @@ tests/shadercheck: tests/shadercheck.c
 
 clean:
 	$(MAKE) -C plugin clean
-	rm -rf $(GATE_OUT) tests/shadercheck
+	rm -rf $(GATE_OUT) tests/shadercheck bench/bench

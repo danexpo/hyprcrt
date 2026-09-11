@@ -1,23 +1,27 @@
 # Performance and latency notes
 
-Machine: Omarchy 4.0.2, Hyprland 0.56.2, AMD Radeon RX 6900 XT (Navi 21, radeonsi, Mesa 26.2.1),
-3440×1440 @ 60 Hz, scale 1.25. Date: 2026-09-05.
+Machine: AMD Radeon RX 6900 XT (Navi 21, radeonsi), 3440×1440 @ 60 Hz, scale 1.25. Each table carries the
+date and software it was measured with.
 
 ## GPU cost, offscreen (bench/bench.c)
 
-Random-noise input, 300 frames after warm-up, wall time around `glFinish`.
+`make bench`, 2026-09-11: Omarchy 4.0.3, Hyprland 0.56.2, Mesa 26.2.2, Linux 7.2.3. Random-noise input,
+300 frames after 30 warm-up, wall time around `glFinish`. Within 4 % of the 2026-09-05 run (Omarchy 4.0.2,
+Mesa 26.2.1) in every row, the 4K 3-pass row excepted (0.568 → 0.546 ms).
 
 | Pass configuration | 3440×1440 | 3840×2160 |
 |---|---|---|
-| Passthrough blit (Hyprland's own final pass) | 0.026 ms | 0.038 ms |
-| Lite mode: single-pass Lottes-style (9 taps, warp, mask, gamma) | 0.167 ms | 0.262 ms |
-| 3 passes (beam, scan+mask, glass), no glow/halation | 0.185 ms | 0.568 ms |
-| Full mode: 6 passes with afterglow and halation at 1:1 | 0.707 ms | 1.478 ms |
-| Single pass on a 25 % damage rect | 0.046 ms | 0.072 ms |
+| Passthrough blit (Hyprland's own final pass) | 0.026 ms | 0.039 ms |
+| Lite mode: single-pass Lottes-style (9 taps, warp, mask, gamma) | 0.168 ms | 0.262 ms |
+| 3 passes (beam, scan+mask, glass), no glow/halation | 0.180 ms | 0.546 ms |
+| Full mode: 6 passes with afterglow and halation at 1:1 | 0.729 ms | 1.467 ms |
+| Single pass on a 25 % damage rect | 0.046 ms | 0.071 ms |
 
 Frame budget: 16.7 ms at 60 Hz, 6.9 ms at 144 Hz.
 
 ## GPU cost, inside the compositor (plugin timer query, nested 1600×900 session)
+
+Measured 2026-09-05 (Omarchy 4.0.2, Mesa 26.2.1); not re-run with the table above.
 
 `plugin:crt:stats = true` makes the plugin wrap its chain in a `GL_TIME_ELAPSED_EXT` query;
 `hyprctl crt status` reports it per monitor.
@@ -48,7 +52,7 @@ while the filter is enabled (a full 0.17 ms frame per redraw, still only when so
 ## How to re-measure
 
 ```sh
-gcc -O2 bench/bench.c -o bench/bench $(pkg-config --cflags --libs egl glesv2 gbm) -lm && bench/bench 3440 1440
+make bench                                  # builds bench/bench, runs 3440x1440 then 3840x2160 (BENCH_SIZES=…)
 tests/run-nested.sh all television 2 &      # then: hyprctl -i <sig> crt status  (gpu_ms per monitor)
 cat /sys/class/drm/card1/device/gpu_busy_percent   # idle check while the desktop is static
 ```

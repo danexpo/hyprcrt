@@ -26,7 +26,7 @@ Two modes, one product:
 | Scope | whole screen (`set scope`, `match` and `media` are refused) | fullscreen windows and windowed media players (default), whole desktop, games, matching windows |
 | Low-power profile | none (`hyprcrt power on\|off\|auto` is refused) | half-resolution halation and a short afterglow |
 | Live knobs | yes (regenerates the shader) | yes |
-| GPU cost at 3440×1440 (RX 6900 XT) | 0.17 ms per frame | 0.19–0.71 ms per frame, only on frames that change |
+| GPU cost at 3440×1440 (RX 6900 XT) | 0.17 ms per frame | 0.18–0.73 ms per frame, only on frames that change |
 | Added display latency | none | none |
 
 Both modes are driven by the same command, `bin/hyprcrt`, the same Omarchy bar widget and the same
