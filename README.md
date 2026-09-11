@@ -138,7 +138,7 @@ hyprcrt set pitch_fullscreen 2 # fullscreen video/browsers: 3 = 480-line tube, 2
 hyprcrt set scope games        # auto | all | fullscreen | games | rules | window | off   (full mode)
 hyprcrt set match '^retroarch$' # class/title regex for scope rules and window          (full mode)
 hyprcrt set media '^(mpv|vlc)$' # what scope auto treats as a picture when windowed       (full mode)
-hyprcrt shot ~/crt.png         # the filtered screen as an image (plain screenshots are unfiltered)
+hyprcrt shot ~/crt.png         # the filtered screen as an image (a plain screenshot holds it too)
 hyprcrt power auto             # low-power profile while a battery is discharging, on|off to force (full mode)
 hyprcrt plugin status          # built for which Hyprland, loaded, disabled by the crash guard?
 hyprcrt mode                   # plugin | lite: which mode is running
@@ -212,6 +212,7 @@ tests/shadercheck.c         compile a screen shader offscreen, run an image thro
 tests/run-nested.sh         a nested Hyprland with the freshly built plugin (never test in the live session)
 tests/run-loader-test.sh    a nested Hyprland wired only through the loader, for the crash-loop guard
 tests/run-damage-test.sh    lite mode in a nested Hyprland inside another: no stale shading around what redraws
+tests/run-capture-test.sh   what a plain screenshot and `hyprcrt shot` hold, in both modes
 tests/lib-nested.sh         the launcher both use: signature and socket files, no shell inside, cleanup
 tests/shadergate            every shader either mode loads, compiled (glslang, and the GPU where there is one)
 tests/run-cli-test.sh       bin/hyprcrt in a sandboxed HOME: what `set` refuses and stores
@@ -232,6 +233,7 @@ hyprctl -i "$(cat tests/out/nested.sig)" crt dump /tmp/out.ppm   # look at the f
 WAYLAND_DISPLAY="$(cat tests/out/nested.wl)" imv docs/previews/source.png   # a client inside the nested session
 tests/run-loader-test.sh &            # the loader alone (tests/out/loader.sig); a crash report shows the guard
 tests/run-damage-test.sh              # lite mode's redraws, about a minute: exits 0 when nothing is left stale
+tests/run-capture-test.sh             # screenshots in both modes, half a minute (needs the built plugin)
 ```
 
 Both nested scripts are driven from the host only and never start a shell inside the nested session;
@@ -249,9 +251,11 @@ halation, which the single pass can only approximate.
 
 ## Notes and limits
 
-- Screenshots and screen recordings are unfiltered in both modes (Hyprland copies the frame before
-  the screen shader, and screen capture renders through its own path). `hyprcrt shot` gives you the
-  filtered frame as an image.
+- A plain screenshot of the screen holds the filtered picture in both modes: Hyprland 0.56 hands
+  screen capture the frame after the screen shader and after the plugin (`tests/run-capture-test.sh`).
+  Recordings and screen shares of a whole output go through the same copy in Hyprland's source but
+  were not measured; sharing a single window renders that window by itself, unfiltered. `hyprcrt shot`
+  saves the filtered screen as an image in either mode.
 - The hardware cursor is on its own plane and stays crisp; set `cursor:no_hardware_cursors = true`
   in Hyprland if you want it filtered too.
 - The filter reads neighbouring pixels, and curvature moves them, so redrawing only the part of the

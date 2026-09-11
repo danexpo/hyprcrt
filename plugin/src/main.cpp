@@ -578,8 +578,9 @@ static void onRenderStage(eRenderStage stage) {
         auto&      st        = stateFor(m);
         const bool wasActive = st.active;
         st.active            = false;
-        // screencopy / screen sharing render through their own path and never reach these stages,
-        // so captures are unfiltered; plugin:crt:capture is reserved for a later version.
+        // screencopy / screen sharing never reach these stages, but on Hyprland 0.56 they copy the main buffer
+        // after this chain has drawn into it, so an output capture is filtered (tests/run-capture-test.sh);
+        // plugin:crt:capture stays reserved.
         int  pitch   = 1;
         bool desktop = true;
         if (!monitorInScope(m, pitch, desktop))

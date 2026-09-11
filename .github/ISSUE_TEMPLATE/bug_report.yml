@@ -6,7 +6,7 @@ body:
     id: what
     attributes:
       label: What happened
-      description: What you did, what you saw, what you expected. A `hyprcrt shot` image helps for visual issues (plain screenshots are unfiltered).
+      description: What you did, what you saw, what you expected. A screenshot or a `hyprcrt shot` image helps for visual issues (both hold the filtered screen on Hyprland 0.56).
     validations:
       required: true
   - type: textarea

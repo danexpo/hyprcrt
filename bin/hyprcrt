@@ -10,7 +10,7 @@
 #   hyprcrt set <key> <value>      keys: curve lines mask glow gamma sharp pitch mask_pitch gain textsafe;
 #                                  full mode only: pitch_fullscreen scope match media low_power
 #   hyprcrt demo [preset] [secs]   try a preset for a few seconds (10), then put everything back
-#   hyprcrt shot [file.png]        save the filtered screen as an image (screenshots are unfiltered otherwise)
+#   hyprcrt shot [file.png]        save the filtered screen as an image (a plain screenshot holds it too)
 #   hyprcrt power auto|on|off      low-power profile (auto: on while a battery is discharging; full mode)
 #   hyprcrt mode                   prints plugin | lite
 #   hyprcrt build                  install a prebuilt plugin for the running Hyprland, or build it (tools/crt-build)
@@ -317,12 +317,9 @@ shot() {
         lite_read
         [ "$enabled" = 1 ] && [ -f "$frag" ] || die "the filter is off; nothing to shoot"
         command -v grim >/dev/null || die "grim is required for lite-mode shots"
-        local sc=""; for c in "$data/tools/shadercheck" "$root/tests/shadercheck" /usr/lib/hyprcrt/shadercheck; do [ -x "$c" ] && sc=$c && break; done
-        [ -n "$sc" ] || die "shadercheck is not built (run hyprcrt install with gcc available)"
-        local raw; raw=$(mktemp --suffix=.ppm)
-        grim -t ppm "$raw" || die "grim failed"
-        "$sc" "$frag" "$raw" "$ppm" >/dev/null || die "shadercheck failed"
-        rm -f "$raw"
+        # Hyprland 0.56 hands screencopy the frame after the screen shader, so grim already holds the filtered
+        # screen; running the shader over it again filtered it twice (tests/run-capture-test.sh)
+        grim -t ppm "$ppm" || { rm -f "$ppm"; die "grim failed"; }
     fi
     case "$out" in
         *.ppm) mv -f "$ppm" "$out" ;;
