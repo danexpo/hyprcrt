@@ -34,6 +34,16 @@ stored() { # stored <key=value> <args...>: exits zero and state.conf holds the v
 
 echo "cli: bin/hyprcrt set, lite mode, sandboxed HOME"
 [ "$(run mode)" = lite ] || { echo "cli: the sandbox sees a compositor; refusing to go on"; exit 1; }
+# every subcommand the dispatch accepts is in `hyprcrt --help` and the README's command block, and neither names
+# one the dispatch does not know (C8: reload was accepted and listed nowhere). demo-restore is the demo timer's.
+words() { sed -n 's/^\(#   \)\{0,1\}hyprcrt \([a-z][a-z-]*\( | [a-z][a-z-]*\)*\).*/\2/p' | tr -d ' ' | tr '|' '\n' | sort -u; }
+dispatched=$(sed -n '/^cmd=\${1:-status}/,/^esac/s/^    \([a-z][a-z|-]*\)).*/\1/p' "$root/bin/hyprcrt" | tr '|' '\n' | grep -v '^-' | grep -vx 'help\|demo-restore' | sort -u)
+helped=$(run --help | grep '^#   hyprcrt ' | words)
+readme=$(awk '/^## Using it/{s=1} s&&/^```sh/{b=1; next} b&&/^```/{exit} b' "$root/README.md" | words)
+[ -n "$dispatched" ] && [ "$dispatched" = "$helped" ] && ok "hyprcrt --help lists exactly the $(echo "$dispatched" | wc -l) subcommands the dispatch accepts" ||
+    bad "hyprcrt --help and the dispatch disagree: $(diff <(echo "$dispatched") <(echo "$helped") | grep '^[<>]' | tr '\n' ' ')"
+[ -n "$dispatched" ] && [ "$dispatched" = "$readme" ] && ok "the README's command block lists the same subcommands" ||
+    bad "the README's command block and the dispatch disagree: $(diff <(echo "$dispatched") <(echo "$readme") | grep '^[<>]' | tr '\n' ' ')"
 # the state file had its lite-only name before both modes shared it: an old one is moved, not lost
 mkdir -p "$(dirname "$conf")"
 printf 'enabled=1\npreset=television\n' > "${conf%/*}/lite.conf"

@@ -21,6 +21,7 @@
 #   hyprcrt guard                  the same check the loader does at start (used by the shell service)
 #   hyprcrt dump <file.ppm>        (plugin) write the next filtered frame
 #   hyprcrt gen [preset] [k=v...]  print a generated lite-mode shader
+#   hyprcrt reload                 recompile the shaders: full mode's passes from disk, lite's from state.conf
 #   hyprcrt menu                   add the Style > CRT filter entries to the Omarchy menu
 #   hyprcrt uninstall [--yes]      unload the plugin, clear the shader, remove every file hyprcrt wrote
 #                                  (and, run from the Omarchy plugin, the plugin itself; --yes skips asking)
@@ -511,6 +512,6 @@ open(path, 'w').write(head + '\n' + entries + '\n}\n')
 PY
         fi
         echo "menu entries added to $menu" ;;
-    help|-h|--help) sed -n '2,27p' "$0" ;;
+    help|-h|--help) sed -n '2,/^# MIT/p' "$0" ;;
     *) die "unknown command $cmd (try: hyprcrt help)" ;;
 esac

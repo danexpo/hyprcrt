@@ -144,6 +144,7 @@ hyprcrt plugin status          # built for which Hyprland, loaded, disabled by t
 hyprcrt mode                   # plugin | lite: which mode is running
 hyprcrt guard                  # the crash-loop check the loader makes at start (the shell service runs it)
 hyprcrt gen television gain=1.2 # print the lite-mode shader for a preset plus key=value overrides
+hyprcrt reload                 # recompile the shaders: full mode's passes from disk, lite's from state.conf
 hyprcrt menu                   # add Style > CRT filter to the Omarchy menu (install does it for you)
 hyprcrt install --no-load       # shaders, presets, tools and the loader, then the plugin (see Install)
 hyprcrt build --no-load         # only the plugin again, e.g. after a Hyprland update (--build forces a compile)
