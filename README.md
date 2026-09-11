@@ -24,7 +24,7 @@ Two modes, one product:
 | Needs | nothing to build | a prebuilt library for your Hyprland (downloaded), or a one-minute build (`base-devel`) |
 | Afterglow, real halation | no (approximated from the beam taps) | yes |
 | Scope | whole screen (`set scope`, `match` and `media` are refused) | fullscreen windows and windowed media players (default), whole desktop, games, matching windows |
-| Low-power profile | none to switch (`hyprcrt power` is refused) | half-resolution halation and a short afterglow |
+| Low-power profile | none (`hyprcrt power on\|off\|auto` is refused) | half-resolution halation and a short afterglow |
 | Live knobs | yes (regenerates the shader) | yes |
 | GPU cost at 3440×1440 (RX 6900 XT) | 0.17 ms per frame | 0.19–0.71 ms per frame, only on frames that change |
 | Added display latency | none | none |
