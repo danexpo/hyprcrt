@@ -30,6 +30,7 @@ extern "C" {
 #include <lauxlib.h>
 }
 
+#include <chrono>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -93,6 +94,7 @@ struct SState {
     std::string                               shaderDir;
     std::string                               lastError;
     std::string                               dumpPath; // crt dump <file.ppm>: write the next filtered frame
+    std::chrono::steady_clock::time_point     dumpAt;   // when dumpPath was requested
     std::string                               loadedMarker; // written while we are loaded, removed on a clean exit (crash-loop guard)
     struct {
         std::string pattern;
@@ -104,6 +106,14 @@ struct SState {
 inline UP<SState> g_state;
 
 // ------------------------------------------------------------------------------------------------ helpers
+
+// a dump request no frame has served within 3 s (the wait of hyprcrt shot, which has given up by then) is abandoned:
+// it neither writes a file nobody waits for nor keeps refusing the next request
+static bool dumpPending() {
+    if (!g_state->dumpPath.empty() && std::chrono::steady_clock::now() - g_state->dumpAt > std::chrono::seconds(3))
+        g_state->dumpPath.clear();
+    return !g_state->dumpPath.empty();
+}
 
 static std::string expandHome(std::string path) {
     if (path.starts_with("~/")) {
@@ -382,7 +392,7 @@ class CCrtPassElement : public IPassElement {
         if (!ok) {
             st.failed = true;
             notify("GL error while filtering " + m->m_name + " (" + st.chain.lastError() + "); filter disabled on this output until reload", true);
-        } else if (!g_state->dumpPath.empty()) {
+        } else if (dumpPending()) {
             // the filtered frame straight out of the main FB (what the screen gets), as a P6 ppm
             // glReadPixels reads the READ binding, which the chain left on one of its own targets
             if (auto* glfb = dynamic_cast<Render::GL::CGLFramebuffer*>(mainFB.get()))
@@ -889,12 +899,16 @@ static SDispatchResult applyCommand(const std::string& cmdline) {
     if (cmd == "dump") {
         if (a.empty())
             return {.success = false, .error = "usage: dump <file.ppm>"};
+        // one request at a time: a second one would silently replace the first, whose caller then waits for nothing
+        if (dumpPending())
+            return {.success = false, .error = "a dump to " + g_state->dumpPath + " is already pending; try again once it is written"};
         bool anyActive = false;
         for (auto& [id, st] : g_state->monitors)
             anyActive = anyActive || st->active;
         if (!anyActive)
             return {.success = false, .error = "no monitor is being filtered right now (scope/preset/bypass); nothing to dump"};
         g_state->dumpPath = expandHome(a);
+        g_state->dumpAt   = std::chrono::steady_clock::now();
         damageAll();
         return {};
     }

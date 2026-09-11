@@ -148,7 +148,7 @@ hyprcrt menu                   # add Style > CRT filter to the Omarchy menu (ins
 hyprcrt install --no-load       # shaders, presets, tools and the loader, then the plugin (see Install)
 hyprcrt build --no-load         # only the plugin again, e.g. after a Hyprland update (--build forces a compile)
 hyprcrt uninstall              # unload, clear the shader, remove every file hyprcrt wrote (see below)
-hyprcrt dump /tmp/frame.ppm    # the next filtered frame, exactly as sent to the display (full mode)
+hyprcrt dump /tmp/frame.ppm    # the next filtered frame, exactly as sent to the display (full mode, one at a time)
 ```
 
 `hyprcrt` remembers what you last chose in `~/.config/hyprcrt/state.conf`, one file for both modes: lite
@@ -212,7 +212,7 @@ tests/shadercheck.c         compile a screen shader offscreen, run an image thro
 tests/run-nested.sh         a nested Hyprland with the freshly built plugin (never test in the live session)
 tests/run-loader-test.sh    a nested Hyprland wired only through the loader, for the crash-loop guard
 tests/run-damage-test.sh    lite mode in a nested Hyprland inside another: no stale shading around what redraws
-tests/run-capture-test.sh   what a plain screenshot and `hyprcrt shot` hold, in both modes
+tests/run-capture-test.sh   what a plain screenshot and `hyprcrt shot` hold, in both modes; `crt dump` one at a time
 tests/lib-nested.sh         the launcher both use: signature and socket files, no shell inside, cleanup
 tests/shadergate            every shader either mode loads, compiled (glslang, and the GPU where there is one)
 tests/run-cli-test.sh       bin/hyprcrt in a sandboxed HOME: what `set` refuses and stores

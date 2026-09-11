@@ -309,7 +309,13 @@ shot() {
     if plugin_loaded; then
         local st; st=$("$0" status)
         [ "$(printf '%s' "$st" | json_get "['enabled']")" = true ] || die "the filter is off; nothing to shoot"
-        hypr crt dump "$ppm" >/dev/null || die "dump failed"
+        # hyprctl exits non-zero on the plugin's refusal (no monitor filtered, another dump pending): read why from it
+        local reply; reply=$(hypr crt dump "$ppm") || true
+        case "$reply" in
+            ok) ;;
+            error:*) rm -f "$ppm"; die "${reply#error: }" ;;
+            *) rm -f "$ppm"; die "dump failed${reply:+: $reply}" ;;
+        esac
         local i=0
         while [ ! -s "$ppm" ] && [ $i -lt 60 ]; do sleep 0.05; i=$((i + 1)); done
         [ -s "$ppm" ] || die "the compositor did not write a frame (is the filter active on a monitor?)"

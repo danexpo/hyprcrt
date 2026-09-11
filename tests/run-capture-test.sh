@@ -1,5 +1,6 @@
 #!/bin/bash
-# run-capture-test.sh - what a plain screenshot of a filtered output holds, in both modes (ledger C4).
+# run-capture-test.sh - what a plain screenshot of a filtered output holds, in both modes (ledger C4), and that full
+# mode serves one `crt dump` at a time without dropping or wedging a request (C7).
 #   tests/run-capture-test.sh          (about half a minute; needs /dev/dri, a Wayland host, grim, magick, the built plugin)
 # A nested Hyprland whose only hyprcrt wiring is lua/loader.lua on a sandboxed state, with nothing on screen but
 # Hyprland's flat background. A flat patch of a screenshot has no texture unless the filter's mask and scanlines are
@@ -116,6 +117,60 @@ err=$(crt "$sig" status | jq -r '.last_error // ""')
 sleep 1
 check "full mode, monitor preset, scope all" "$(texture full-on)"
 shoot "full mode" "$T/full-on.png" full
+# two dump requests in one hyprctl batch are handled in one turn of the event loop, so no frame can be served
+# between them: the second must be refused while the first is pending, and the first must still land (C7)
+out=$(hyprctl -i "$sig" --batch "crt dump $T/dump-a.ppm ; crt dump $T/dump-b.ppm" 2>&1 | tr '\n' ' ')
+for _ in $(seq 60); do [ -s "$T/dump-a.ppm" ] && break; sleep 0.05; done
+sleep 0.5
+if [[ $out == *"already pending"* ]] && [ -s "$T/dump-a.ppm" ] && [ ! -e "$T/dump-b.ppm" ]; then
+    echo "  ok   full mode: a second dump while one is pending is refused, the first lands"
+else
+    echo "  FAIL full mode: two dumps at once answered '$out'; first landed: $([ -s "$T/dump-a.ppm" ] && echo yes || echo no), second landed: $([ -e "$T/dump-b.ppm" ] && echo yes || echo no)"
+    fails=$((fails + 1))
+fi
+# a request no frame serves (the filter bypassed straight after it) is abandoned after 3 s: nothing is written for it
+# later, and it does not keep refusing the next dump
+hyprctl -i "$sig" --batch "crt dump $T/dump-c.ppm ; crt bypass on" >/dev/null
+sleep 3.5
+hyprctl -i "$sig" crt bypass off >/dev/null
+sleep 0.5
+out=$(hyprctl -i "$sig" crt dump "$T/dump-d.ppm" 2>&1)
+for _ in $(seq 60); do [ -s "$T/dump-d.ppm" ] && break; sleep 0.05; done
+if [ "$out" = ok ] && [ -s "$T/dump-d.ppm" ] && [ ! -e "$T/dump-c.ppm" ]; then
+    echo "  ok   full mode: a dump no frame served is abandoned after 3 s, writes nothing late, blocks nothing"
+else
+    echo "  FAIL full mode: after an unserved dump the next answered '$out'; next landed: $([ -s "$T/dump-d.ppm" ] && echo yes || echo no), unserved one written late: $([ -e "$T/dump-c.ppm" ] && echo yes || echo no)"
+    fails=$((fails + 1))
+fi
+# preset then dump for all four presets, as a script would: every dump accepted lands, every other one says why
+accepted=() lost="" said=""
+for p in plain scanlines monitor television; do
+    crt "$sig" preset "$p" >/dev/null
+    if out=$(crt "$sig" dump "$T/loop-$p.ppm" 2>&1); then accepted+=("$p")
+    elif [[ $out != *"already pending"* ]]; then said="$said $p:'$out'"; fi
+done
+sleep 1
+for p in "${accepted[@]}"; do [ -s "$T/loop-$p.ppm" ] || lost="$lost $p"; done
+if [ -z "$lost" ] && [ -z "$said" ] && [ ${#accepted[@]} -gt 0 ]; then
+    echo "  ok   full mode: preset+dump over four presets, ${#accepted[@]} accepted and all landed, the rest refused as pending"
+else
+    echo "  FAIL full mode: preset+dump over four presets lost:${lost:- none}; other refusals:${said:- none}"
+    fails=$((fails + 1))
+fi
+# hyprcrt shot reads the plugin's refusal instead of waiting out its 3 s for a frame that will not come
+crt "$sig" set scope off >/dev/null
+sleep 0.5
+t0=$(date +%s%N)
+if out=$(crt "$sig" shot "$T/shot-refused.png" 2>&1); then
+    echo "  FAIL full mode: hyprcrt shot with scope off succeeded"; fails=$((fails + 1))
+else
+    ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+    if [[ $out == *"no monitor is being filtered"* ]] && [ "$ms" -lt 1500 ]; then
+        echo "  ok   full mode: hyprcrt shot with scope off says why in $ms ms"
+    else
+        echo "  FAIL full mode: hyprcrt shot with scope off took $ms ms and said '$out'"; fails=$((fails + 1))
+    fi
+fi
 stop
 
 [ "$fails" = 0 ] || { echo "capture: $fails check(s) disagree with the README (frames in $T)"; exit 1; }

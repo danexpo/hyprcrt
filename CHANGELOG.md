@@ -89,6 +89,9 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
   stray file later when a monitor next gets the chain. The frame it does write is written beside the
   path and renamed into place, so `hyprcrt shot` (which starts reading as soon as the file is
   non-empty) can no longer see a partial frame.
+- `crt dump` (full mode) serves one request at a time: a second one while a frame is pending is refused
+  instead of silently replacing the first, and a request no frame serves within 3 s is dropped rather than
+  written late. `hyprcrt shot` says why the plugin refused a dump instead of "dump failed".
 
 ## 0.1.0 (2026-09-05)
 
