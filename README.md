@@ -177,6 +177,9 @@ packaging/aur               PKGBUILD
 tests/shadercheck.c         compile a screen shader offscreen, run an image through it (previews, lite-mode shots)
 tests/run-nested.sh         a nested Hyprland with the freshly built plugin (never test in the live session)
 tests/run-loader-test.sh    a nested Hyprland wired only through the loader, for the crash-loop guard
+tests/lib-nested.sh         the launcher both use: signature and socket files, no shell inside, cleanup
+tests/shadergate            every shader either mode loads, compiled (glslang, and the GPU where there is one)
+tests/run-cli-test.sh       bin/hyprcrt in a sandboxed HOME: what `set` refuses and stores
 bench/bench.c               the GPU cost benchmark behind the numbers above
 docs/PLAN.md                the feasibility analysis and plan this was built from
 docs/previews/              the presets on a test card
@@ -185,11 +188,20 @@ docs/previews/              the presets on a test card
 ## Testing
 
 ```sh
-make -C plugin all -j                 # needs the hyprland package headers
+make gate                             # the CI gate: plugin build, every shader compiled, the CLI, shell/lua/json/qml
 tests/run-nested.sh auto monitor 0 &  # a nested Hyprland with the plugin loaded (scope, preset, pitch)
-hyprctl -i <nested-signature> crt status
-hyprctl -i <nested-signature> crt dump /tmp/out.ppm    # look at the filtered frame
-tests/run-loader-test.sh &            # the loader alone; kill -9 it and add a crash report to see the guard
+hyprctl -i "$(cat tests/out/nested.sig)" crt status
+hyprctl -i "$(cat tests/out/nested.sig)" crt dump /tmp/out.ppm   # look at the filtered frame
+WAYLAND_DISPLAY="$(cat tests/out/nested.wl)" imv docs/previews/source.png   # a client inside the nested session
+tests/run-loader-test.sh &            # the loader alone (tests/out/loader.sig); a crash report shows the guard
+```
+
+Both nested scripts are driven from the host only and never start a shell inside the nested session;
+killing the script stops the nested compositor and removes the signature files. The nested window opens
+on your active workspace; to keep it out of the way add this rule to your own Hyprland config:
+
+```lua
+hl.window_rule({ match = { class = "^aquamarine$" }, workspace = "special:crt-test silent" })
 ```
 
 Never load an untested build into the live session: a plugin fault takes the whole compositor down.

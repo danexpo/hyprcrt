@@ -1,4 +1,6 @@
 -- hyprcrt nested test session. Run with tests/run-nested.sh (never load an untested build into the live session).
+-- Driven from the host only (hyprctl -i, WAYLAND_DISPLAY; see tests/lib-nested.sh): no terminal bind and no
+-- start-up command, so no shell ever runs inside it.
 hl.monitor({ output = "", mode = "1600x900@60", position = "auto", scale = 1 })
 
 hl.config({
@@ -26,12 +28,7 @@ hl.config({
   },
 })
 
-hl.bind("SUPER + Q", hl.dsp.exec_cmd("foot"))
 hl.bind("SUPER + C", hl.dsp.window.close())
 hl.bind("SUPER + F", hl.dsp.window.fullscreen())
 hl.bind("SUPER + T", hl.dsp.exec_cmd("hyprctl crt toggle"))
 
-local cmd = os.getenv("HYPRCRT_EXEC")
-if cmd and cmd ~= "" then
-  hl.on("hyprland.start", function() hl.exec_cmd(cmd) end)
-end
