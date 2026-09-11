@@ -46,7 +46,6 @@ loader=$data/loader.lua
 disabled_file=$state_dir/plugin-disabled
 loaded_marker=$state_dir/plugin-loaded
 mkdir -p "$conf" "$state_dir"
-[ -f "$state_file" ] || [ ! -f "$conf/lite.conf" ] || mv -f "$conf/lite.conf" "$state_file"
 stamp=$state_dir/changed
 [ -f "$stamp" ] || : > "$stamp"   # the shell widget watches this file
 
@@ -330,6 +329,10 @@ plugin_cmd() {
         *) die "usage: plugin status|enable|disable|load|unload" ;;
     esac
 }
+
+# the state file's old name: move it, and refresh the installed loader with it, since a loader from before the
+# rename reads only lite.conf and would start the next session without the filter
+if [ ! -f "$state_file" ] && [ -f "$conf/lite.conf" ]; then mv -f "$conf/lite.conf" "$state_file"; ensure_loader; fi
 
 cmd=${1:-status}; shift || true
 case "$cmd" in

@@ -37,8 +37,10 @@ echo "cli: bin/hyprcrt set, lite mode, sandboxed HOME"
 # the state file had its lite-only name before both modes shared it: an old one is moved, not lost
 mkdir -p "$(dirname "$conf")"
 printf 'enabled=1\npreset=television\n' > "${conf%/*}/lite.conf"
+mkdir -p "$sb/home/.local/share/hyprcrt" && echo '-- a loader from before the rename' > "$sb/home/.local/share/hyprcrt/loader.lua"
 run status >/dev/null
 [ -f "$conf" ] && [ ! -f "${conf%/*}/lite.conf" ] && grep -qx preset=television "$conf" && ok "an old lite.conf becomes state.conf" || bad "lite.conf was not moved to state.conf"
+cmp -s "$root/lua/loader.lua" "$sb/home/.local/share/hyprcrt/loader.lua" && ok "that move refreshes the installed loader" || bad "the installed loader still predates state.conf"
 run preset monitor >/dev/null
 [ -f "$conf" ] || { echo "cli: preset did not write $conf"; exit 1; }
 
