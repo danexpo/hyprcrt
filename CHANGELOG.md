@@ -23,6 +23,10 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `hyprcrt shot [file.png]`: the filtered frame as an image, in both modes (screenshots are unfiltered).
 - `hyprcrt power auto|on|off`: a low-power profile (half-resolution halation, short afterglow).
 - `hyprcrt plugin status|enable|disable|load|unload`.
+- `hyprcrt uninstall [--yes]`: unloads the plugin and clears the shader in the running session, then
+  removes everything install, the loader and both modes wrote (data, state, `state.conf`, the toggle
+  file, the post-update hook, the menu entries, its own `~/.local/bin` link), keeps the user's own menu
+  entries, removes the Omarchy plugin when run from it, and prints what needs root or the user's config.
 - Plain Hyprland: `contrib/hyprland/hyprcrt.lua`; Waybar: `contrib/waybar/`; AUR: `packaging/aur/`.
 - Preset previews rendered from a test card (`docs/previews/`), issue template, script checks in CI.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.

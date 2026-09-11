@@ -22,6 +22,8 @@
 #   hyprcrt dump <file.ppm>        (plugin) write the next filtered frame
 #   hyprcrt gen [preset] [k=v...]  print a generated lite-mode shader
 #   hyprcrt menu                   add the Style > CRT filter entries to the Omarchy menu
+#   hyprcrt uninstall [--yes]      unload the plugin, clear the shader, remove every file hyprcrt wrote
+#                                  (and, run from the Omarchy plugin, the plugin itself; --yes skips asking)
 #
 # MIT (c) 2026 Dan Expo
 set -euo pipefail
@@ -45,9 +47,11 @@ so=$data/hyprcrt.so
 loader=$data/loader.lua
 disabled_file=$state_dir/plugin-disabled
 loaded_marker=$state_dir/plugin-loaded
-mkdir -p "$conf" "$state_dir"
 stamp=$state_dir/changed
-[ -f "$stamp" ] || : > "$stamp"   # the shell widget watches this file
+if [ "${1:-}" != uninstall ]; then # uninstall must not recreate what it removes
+    mkdir -p "$conf" "$state_dir"
+    [ -f "$stamp" ] || : > "$stamp"   # the shell widget watches this file
+fi
 
 die() { echo "hyprcrt: $*" >&2; exit 1; }
 
@@ -210,6 +214,58 @@ guard() {
     return 0
 }
 
+# ---- uninstall: everything install, the loader and both modes wrote, in the order that keeps the session safe --
+uninstall() {
+    local yes=0
+    [ "${1:-}" = --yes ] && yes=1
+    local live=0
+    [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && hypr version >/dev/null && live=1
+    # the plugin leaves the running session first, while the file Hyprland matches it by is still there
+    if [ "$live" = 1 ] && plugin_loaded; then
+        (plugin_cmd unload) >/dev/null || echo "hyprcrt: could not unload the plugin; it is gone after the next Hyprland start" >&2
+    fi
+    local toggled=0
+    [ ! -f "$toggles/hyprcrt.lua" ] || toggled=1
+    rm -f "$toggles/hyprcrt.lua" "$toggles/hyprcrt-plugin.lua"
+    [ "$live" = 0 ] || hypr eval 'hl.config({ decoration = { screen_shader = "" }, debug = { damage_tracking = 2 } })' >/dev/null || true
+    rm -rf "$data" "$conf" "$state_dir"
+    local cfg=${XDG_CONFIG_HOME:-$HOME/.config}
+    rm -f "$cfg/omarchy/hooks/post-update.d/hyprcrt-rebuild"
+    local menu=$cfg/omarchy/extensions/omarchy-menu.jsonc
+    if [ -f "$menu" ] && grep -q '"style\.crt' "$menu"; then
+        python3 - "$menu" <<'PY' || echo "hyprcrt: could not edit $menu; remove the \"style.crt\" entries by hand" >&2
+import re, sys
+path = sys.argv[1]
+s = open(path).read()
+s = re.sub(r'^[ \t]*"style\.crt[^"]*"[ \t]*:.*\n', '', s, flags=re.M)
+s = re.sub(r',(\s*)}\s*$', r'\1}\n', s)  # the entry before ours may now be the last one
+# the file `hyprcrt menu` created, now holding nothing else, goes too
+if re.fullmatch(r'\{\s*// Omarchy menu extensions\. Entries here extend the default menu\.\s*\}\s*', s):
+    import os; os.remove(path)
+else:
+    open(path, 'w').write(s)
+PY
+    fi
+    # the link install made, not a link or file of the user's own
+    [ "$(readlink "$HOME/.local/bin/hyprcrt" 2>/dev/null)" = "$root/bin/hyprcrt" ] && rm -f "$HOME/.local/bin/hyprcrt"
+    if [ "$live" = 1 ]; then echo "hyprcrt: uninstalled; the filter is off in this session (plugin unloaded, shader cleared)"; else echo "hyprcrt: uninstalled"; fi
+    [ ! -f /etc/pacman.d/hooks/hyprcrt-rebuild.hook ] || echo "  the pacman hook needs root: sudo rm /etc/pacman.d/hooks/hyprcrt-rebuild.hook"
+    case "$root" in
+        */omarchy/plugins/*)
+            # the bar widget in this tree would recreate the state directory, so it goes too
+            local id; id=$(basename "$root")
+            if command -v omarchy >/dev/null && { [ "$yes" = 1 ] || [ -t 0 ]; }; then
+                if [ "$yes" = 1 ]; then omarchy plugin remove "$id" --yes; else omarchy plugin remove "$id"; fi || echo "  the shell plugin stays; remove it with: omarchy plugin remove $id" >&2
+                rm -rf "$conf" "$state_dir" # anything the widget touched while it was still there
+            else
+                echo "  remove the bar widget and panel: omarchy plugin remove $id"
+            fi ;;
+        /usr/share/hyprcrt) echo "  remove the package: sudo pacman -R hyprcrt-git" ;;
+        *) [ "$toggled" = 1 ] || echo "  remove the dofile line for hyprcrt from your Hyprland config"
+           echo "  the source clone ($root) is yours to delete" ;;
+    esac
+}
+
 # ---- demo: a preset for a few seconds, then back to what was there ---------------------------------------
 demo_start() {
     local p=${1:-monitor} secs=${2:-10}
@@ -332,7 +388,7 @@ plugin_cmd() {
 
 # the state file's old name: move it, and refresh the installed loader with it, since a loader from before the
 # rename reads only lite.conf and would start the next session without the filter
-if [ ! -f "$state_file" ] && [ -f "$conf/lite.conf" ]; then mv -f "$conf/lite.conf" "$state_file"; ensure_loader; fi
+if [ "${1:-}" != uninstall ] && [ ! -f "$state_file" ] && [ -f "$conf/lite.conf" ]; then mv -f "$conf/lite.conf" "$state_file"; ensure_loader; fi
 
 cmd=${1:-status}; shift || true
 case "$cmd" in
@@ -394,6 +450,7 @@ case "$cmd" in
     shot) shot "$@" ;;
     power) power "$@" ;;
     guard) guard ;;
+    uninstall) uninstall "$@" ;;
     plugin) plugin_cmd "$@" ;;
     gen)
         # a preset by name, as `preset` takes it, or a preset file; then key=value overrides
@@ -447,6 +504,6 @@ open(path, 'w').write(head + '\n' + entries + '\n}\n')
 PY
         fi
         echo "menu entries added to $menu" ;;
-    help|-h|--help) sed -n '2,25p' "$0" ;;
+    help|-h|--help) sed -n '2,27p' "$0" ;;
     *) die "unknown command $cmd (try: hyprcrt help)" ;;
 esac

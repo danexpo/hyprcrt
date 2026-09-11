@@ -86,5 +86,42 @@ else
     echo "  skip render check (no /dev/dri/renderD128)"
 fi
 
+# uninstall leaves no trace of what install, the loader and both modes wrote, and keeps what is the user's
+h=$sb/home
+mkdir -p "$h/.local/state/omarchy/toggles/hypr" "$h/.config/omarchy/extensions" "$h/.config/omarchy/hooks/post-update.d" "$h/.local/bin"
+printf '{\n  "user.mine": {"label":"mine"}\n}\n' > "$h/.config/omarchy/extensions/omarchy-menu.jsonc"
+run menu >/dev/null && run plugin enable >/dev/null && run plugin disable >/dev/null && run preset monitor >/dev/null
+ln -s "$root/bin/hyprcrt" "$h/.local/bin/hyprcrt"
+cp "$root/omarchy-plugin/hooks/hyprcrt-rebuild" "$h/.config/omarchy/hooks/post-update.d/"
+: > "$h/.local/state/hyprcrt/demo.json"
+before=$(find "$h" -iname '*hyprcrt*' | wc -l)
+grep -q '"style.crt' "$h/.config/omarchy/extensions/omarchy-menu.jsonc" || bad "the uninstall setup has no menu entries"
+if out=$(run uninstall 2>&1); then
+    left=$(find "$h" -iname '*hyprcrt*')
+    [ -z "$left" ] && ok "uninstall removed all $before hyprcrt paths" || bad "uninstall left: $(echo "$left" | tr '\n' ' ')"
+    m=$h/.config/omarchy/extensions/omarchy-menu.jsonc
+    if grep -q 'style.crt' "$m"; then bad "uninstall left the menu entries"
+    elif ! grep -q '"user.mine"' "$m"; then bad "uninstall dropped the user's own menu entry"
+    elif ! python3 -c "import json,re,sys; json.loads(re.sub(r'^\s*//.*$','',open(sys.argv[1]).read(),flags=re.M))" "$m"; then bad "uninstall left the menu file unparseable"
+    else ok "uninstall took out the menu entries and kept the user's"; fi
+    run uninstall >/dev/null 2>&1 || bad "a second uninstall failed"
+    [ -z "$(find "$h" -iname '*hyprcrt*')" ] && ok "a second uninstall is quiet and leaves nothing" || bad "a second uninstall recreated: $(find "$h" -iname '*hyprcrt*' | tr '\n' ' ')"
+else
+    bad "hyprcrt uninstall failed: $out"
+fi
+
+# run from the Omarchy plugin's own tree, uninstall removes that plugin too, but only when asked or confirmed
+p=$sb/home/.config/omarchy/plugins/danexpo.crt
+mkdir -p "$p/bin" "$sb/stub" && cp "$root/bin/hyprcrt" "$p/bin/"
+printf '#!/bin/sh\necho "$*" >> "%s/omarchy.calls"\n' "$sb" > "$sb/stub/omarchy" && chmod +x "$sb/stub/omarchy"
+orun() { env -i PATH="$sb/stub:$PATH" HOME="$sb/home" XDG_RUNTIME_DIR="$sb/run" "$p/bin/hyprcrt" "$@" </dev/null; }
+out=$(orun uninstall 2>&1)
+if [ -e "$sb/omarchy.calls" ]; then bad "uninstall without --yes and without a terminal ran: $(cat "$sb/omarchy.calls")"
+elif [[ $out != *"omarchy plugin remove danexpo.crt"* ]]; then bad "uninstall from the plugin tree did not say how to remove the plugin: $out"
+else ok "without --yes or a terminal, uninstall names omarchy plugin remove and does not run it"; fi
+orun uninstall --yes >/dev/null 2>&1
+[ "$(cat "$sb/omarchy.calls" 2>/dev/null)" = "plugin remove danexpo.crt --yes" ] && ok "uninstall --yes removes the Omarchy plugin it runs from" \
+    || bad "uninstall --yes called: $(cat "$sb/omarchy.calls" 2>/dev/null)"
+
 [ "$fails" -eq 0 ] || { echo "cli: $fails failure(s)"; exit 1; }
-echo "cli: set refuses bad values in both modes' ranges, stores good ones, and gain=0 cannot go black"
+echo "cli: set refuses bad values in both modes' ranges, stores good ones, gain=0 cannot go black, uninstall leaves nothing"

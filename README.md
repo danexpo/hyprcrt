@@ -102,6 +102,20 @@ that pid, the loader keeps the plugin off at the next start, falls back to lite 
 (the panel shows the reason; so does `hyprcrt plugin status`). `hyprcrt plugin enable` lifts it.
 Please attach `~/.cache/hyprland/hyprlandCrashReport<pid>.txt` to a bug report.
 
+### Removing it
+
+```sh
+hyprcrt uninstall
+```
+
+It unloads the plugin and clears the lite shader in the running session, then removes
+`~/.local/share/hyprcrt`, `~/.local/state/hyprcrt`, `~/.config/hyprcrt` (the state file), the Omarchy
+toggle file, the post-update hook, the Style > CRT filter menu entries (your own entries stay) and the
+`~/.local/bin/hyprcrt` link install made. Run from the Omarchy plugin, it also removes the plugin
+(`omarchy plugin remove danexpo.crt`; it asks first, `--yes` does not). It prints what it cannot
+remove itself: the pacman hook in `/etc`, the Arch package, and on plain Hyprland the `dofile` line
+in your config and the clone.
+
 ## Using it
 
 ```sh
@@ -125,6 +139,7 @@ hyprcrt mode                   # plugin | lite: which mode is running
 hyprcrt guard                  # the crash-loop check the loader makes at start (the shell service runs it)
 hyprcrt gen television gain=1.2 # print the lite-mode shader for a preset plus key=value overrides
 hyprcrt menu                   # add Style > CRT filter to the Omarchy menu (install does it for you)
+hyprcrt uninstall              # unload, clear the shader, remove every file hyprcrt wrote (see below)
 hyprcrt dump /tmp/frame.ppm    # the next filtered frame, exactly as sent to the display (full mode)
 ```
 
