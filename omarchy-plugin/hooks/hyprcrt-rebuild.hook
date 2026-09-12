@@ -1,5 +1,5 @@
 # pacman hook (optional, for people who update with pacman directly instead of `omarchy update`).
-# Install: sudo cp hyprcrt-rebuild.hook /etc/pacman.d/hooks/
+# Install (as root): cp hyprcrt-rebuild.hook /etc/pacman.d/hooks/
 # It only marks the plugin as stale; the actual rebuild runs as the user, from the Omarchy
 # post-update hook or from `hyprcrt build`, because pacman hooks run as root without the session.
 [Trigger]

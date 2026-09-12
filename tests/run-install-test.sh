@@ -115,6 +115,58 @@ fi
 (cd "$sb/release" && echo "$ver  hyprcrt-$hdr.so" > VERSIONS)
 sed -i "s/\"version\": *\"$new\"/\"version\": \"$ver\"/" "$src/manifest.json"
 
+# the post-update hook runs unattended, so it executes nothing from the checkout and nothing found on the PATH, takes
+# only a verified prebuilt of the checkout's version, and replaces a symlink planted where its state lives instead of
+# following it; a release without that version, a checksum mismatch or a state directory others can write leave
+# everything untouched
+co=$h/.config/omarchy/plugins/danexpo.crt
+mkdir -p "$co/tools" "$sb/shadow"
+sed "s/\"version\": *\"$ver\"/\"version\": \"$new\"/" "$src/manifest.json" > "$co/manifest.json"
+printf '#!/bin/sh\necho crt-build >> "%s/checkout.calls"\n' "$sb" > "$co/tools/crt-build" && chmod +x "$co/tools/crt-build"
+for t in sha256sum curl wget mv ln stat mkdir chmod rm cat sed grep; do printf '#!/bin/sh\necho %s >> "%s/shadow.calls"\nexit 1\n' "$t" "$sb" > "$sb/shadow/$t"; chmod +x "$sb/shadow/$t"; done
+printf 'newest' >> "$sb/release/hyprcrt-$hdr.so"
+(cd "$sb/release" && sha256sum "hyprcrt-$hdr.so" > SHA256SUMS && echo "$new  hyprcrt-$hdr.so" > VERSIONS)
+cp "$sb/release/SHA256SUMS" "$sb/badrelease/"; (cd "$sb/badrelease" && echo "$new  hyprcrt-$hdr.so" > VERSIONS)
+echo canary > "$sb/canary"; ln -sfn "$sb/canary" "$data/built-version"
+hook() { env -i PATH="$sb/shadow:$PATH" HOME=/nonexistent XDG_DATA_HOME=/nonexistent bash "$src/omarchy-plugin/hooks/hyprcrt-rebuild" --home "$h" "$@" </dev/null; }
+ino=$(stat -c %i "$data/hyprcrt-$hdr.so")
+if out=$(hook --release "file://$sb/badrelease" 2>&1) && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ] && [ -L "$data/built-version" ]; then
+    ok "the hook refuses a prebuilt whose checksum does not match and changes nothing"
+else
+    bad "the hook against a bad checksum: $out; $(ls -l "$data" | tr '\n' ' ')"
+fi
+(cd "$sb/release" && echo "$ver  hyprcrt-$hdr.so" > VERSIONS)
+if out=$(hook --release "file://$sb/release" 2>&1) && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ] && [ -L "$data/built-version" ]; then
+    ok "the hook leaves a prebuilt of another version alone (the user is told to run hyprcrt build)"
+else
+    bad "the hook against a release of $ver for sources of $new: $out; $(ls -l "$data" | tr '\n' ' ')"
+fi
+(cd "$sb/release" && echo "$new  hyprcrt-$hdr.so" > VERSIONS)
+chmod g+w "$data"
+if out=$(hook --release "file://$sb/release" 2>&1) && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ] && [ -L "$data/built-version" ]; then
+    ok "the hook does nothing while others can write its state directory"
+else
+    bad "the hook with a group-writable state directory: $out; $(ls -l "$data" | tr '\n' ' ')"
+fi
+chmod g-w "$data"
+if out=$(hook --release "file://$sb/release" 2>&1) && cmp -s "$data/hyprcrt-$hdr.so" "$sb/release/hyprcrt-$hdr.so" && [ "$(readlink "$data/hyprcrt.so")" = "hyprcrt-$hdr.so" ] \
+    && [ ! -L "$data/built-version" ] && [ "$(cat "$data/built-version")" = "$new" ] && [ "$(cat "$data/built-for")" = "$hdr" ] && [ "$(cat "$sb/canary")" = canary ]; then
+    ok "the hook installed the verified prebuilt of $new for ${hdr:0:12} and replaced the planted symlink rather than write through it"
+else
+    bad "the hook: $out; $(ls -l "$data" | tr '\n' ' '); canary: $(cat "$sb/canary")"
+fi
+[ ! -e "$sb/checkout.calls" ] && [ ! -e "$sb/shadow.calls" ] && ok "the hook ran nothing from the checkout and nothing from the PATH" \
+    || bad "the hook ran: $(cat "$sb/checkout.calls" "$sb/shadow.calls" 2>/dev/null | tr '\n' ' ')"
+[ -z "$(find "$data" -maxdepth 1 -name '.post-update.*')" ] && ok "the hook removed its temporary directory" || bad "the hook left: $(ls -a "$data" | tr '\n' ' ')"
+ino=$(stat -c %i "$data/hyprcrt-$hdr.so")
+if out=$(hook --release "file://$sb/release" 2>&1) && [ "$(cat "$data/built-version")" = "$new" ] && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ]; then
+    ok "the hook again, with the library current, leaves it alone"
+else
+    bad "the hook a second time: $out"
+fi
+rm -rf "$co" "$sb/shadow"
+(cd "$sb/release" && echo "$ver  hyprcrt-$hdr.so" > VERSIONS)
+
 # a download that does not match SHA256SUMS never becomes the installed library
 rm -rf "$data"
 if out=$(run badrelease "$src/tools/crt-fetch" 2>&1); then

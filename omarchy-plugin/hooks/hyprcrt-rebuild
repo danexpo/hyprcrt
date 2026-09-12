@@ -1,37 +1,153 @@
-#!/bin/bash
+#!/usr/bin/bash
 # hyprcrt post-update hook for Omarchy (~/.config/omarchy/hooks/post-update.d/hyprcrt-rebuild).
-# After `omarchy update` finishes, refresh the CRT plugin when Hyprland changed underneath it, or when the
-# plugin sources (the Omarchy plugin checkout) are a newer hyprcrt than the installed library was built from.
-# A plugin only loads into the exact Hyprland commit it was built for, so without this the full mode
-# silently stops after the next Hyprland update and the filter falls back to lite mode; and a library of
-# the old version would keep running under the updated panel and CLI.
+# After `omarchy update` finishes, refresh the CRT plugin when Hyprland changed underneath it, or when the plugin
+# sources (the Omarchy plugin checkout) are a newer hyprcrt than the installed library was built from. A plugin
+# only loads into the exact Hyprland commit it was built for, so without this the full mode silently stops after
+# the next Hyprland update and the filter falls back to lite mode; and a library of the old version would keep
+# running under the updated panel and CLI.
 #
-# Installed by: omarchy hook install post-update <this file>   (hyprcrt install does it for you)
+# It runs unattended, so it is kept to what can be trusted without a person watching:
+# - it executes nothing from the plugin checkout, nor anything found on the PATH: the checkout is only read for
+#   its version, and the few programs it needs are named by their absolute paths (/usr/bin/curl or wget,
+#   sha256sum, stat, mkdir, mv, ln, chmod, rm, and Omarchy's notifier); everything else is a bash builtin;
+# - it closes its environment first: every inherited variable and function is dropped but the session bus and
+#   runtime directory the notifier needs, PATH is fixed, and the home directory comes from the passwd database,
+#   not from HOME;
+# - the only thing it ever installs is a library of the checkout's version, downloaded over TLS from this
+#   project's release for that version (or the rolling prebuilt release, which states each library's version)
+#   and verified against the release's SHA256SUMS. When no such prebuilt exists, compiling from the checkout is
+#   left to the user: it says so, and `hyprcrt build` does it;
+# - its state directory is checked to be a real directory of the user's, not writable by others, and held open;
+#   every read and write goes through that descriptor, nothing is read through a symlink, files are written
+#   beside their target and renamed into place, and nothing is deleted but its own temporary directory.
+# The new library loads at the next Hyprland start (or now: hyprcrt plugin unload && hyprcrt plugin load).
+#
+# Install: omarchy hook install post-update <this file>   (omarchy-hook runs it with no arguments)
+# For tests only: --home <dir> stands in for the passwd home, --release <url> for the release base URL.
+# MIT (c) 2026 Dan Expo
 set -u
-data=${XDG_DATA_HOME:-$HOME/.local/share}/hyprcrt
-built=$(cat "$data/built-for" 2>/dev/null || true)
-hdr=$(grep -m1 GIT_COMMIT_HASH /usr/include/hyprland/src/version.h 2>/dev/null | cut -d'"' -f2 || true)
-[ -n "$hdr" ] || exit 0                 # no headers, nothing to do
-[ -f "$data/hyprcrt.so" ] || exit 0     # full mode was never built: stay in lite mode
 
-src=""
-for c in "$HOME/.config/omarchy/plugins/danexpo.crt" "$HOME/.config/omarchy/plugins/hyprcrt" "$data/src"; do
-    [ -d "$c/plugin/src" ] && src=$c && break
+# ---- a closed environment: fixed PATH, no inherited functions, nothing kept but what the notifier needs
+keep_runtime=${XDG_RUNTIME_DIR:-} keep_bus=${DBUS_SESSION_BUS_ADDRESS:-} keep_wl=${WAYLAND_DISPLAY:-}
+mapfile -t names < <(compgen -e); for v in "${names[@]}"; do unset "$v" 2>/dev/null; done
+mapfile -t names < <(compgen -A function); for f in "${names[@]}"; do unset -f "$f" 2>/dev/null; done
+unalias -a 2>/dev/null
+export PATH=/usr/bin
+[ -n "$keep_runtime" ] && export XDG_RUNTIME_DIR=$keep_runtime
+[ -n "$keep_bus" ] && export DBUS_SESSION_BUS_ADDRESS=$keep_bus
+[ -n "$keep_wl" ] && export WAYLAND_DISPLAY=$keep_wl
+
+# ---- the user's home, from the passwd database (an argument only for the tests; omarchy-hook passes none)
+home="" release=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --home) home=$2; shift ;;
+        --release) release=$2; shift ;;
+        *) exit 0 ;;
+    esac
+    shift
 done
-srcver=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$src/manifest.json" 2>/dev/null | head -n1)
-have=$(cat "$data/built-version" 2>/dev/null || true)
-[ "$built" = "$hdr" ] && { [ -z "$src" ] || [ "$have" = "$srcver" ]; } && exit 0   # still matching
-if [ -z "$src" ]; then
-    echo "hyprcrt: Hyprland changed to ${hdr:0:8} but the plugin sources were not found; run: hyprcrt build --source <repo>" >&2
+if [ -z "$home" ] && [ -x /usr/bin/getent ]; then
+    IFS=: read -r _ _ _ _ _ home _ < <(/usr/bin/getent passwd "$UID") || home=""
+fi
+if [ -z "$home" ]; then
+    while IFS=: read -r _ _ uid _ _ dir _; do
+        [ "$uid" = "$UID" ] && { home=$dir; break; }
+    done < /etc/passwd
+fi
+[[ $home == /* ]] || exit 0
+export HOME=$home
+
+notify() { # urgency text
+    [ -x /usr/share/omarchy/bin/omarchy-notification-send ] || { echo "hyprcrt: $2" >&2; return 0; }
+    /usr/share/omarchy/bin/omarchy-notification-send -u "$1" "$2" >/dev/null 2>&1 || true
+}
+
+# ---- the state directory, held open: a real directory of ours that nobody else can write
+data=$home/.local/share/hyprcrt
+[ -d "$data" ] && [ ! -L "$data" ] && [ -O "$data" ] || exit 0
+mode=$(/usr/bin/stat -c %a "$data" 2>/dev/null) || exit 0
+[[ $mode =~ ^[0-7]?[0-7][0-5][0-5]$ ]] || exit 0            # no group or world write bit
+exec {dfd}<"$data" || exit 0
+d=/dev/fd/$dfd                                             # every path below is relative to the held directory
+
+readline() { # <name> -> REPLY: the first line of a regular, non-symlink file of ours in the state directory, else ""
+    REPLY=""
+    [ -f "$d/$1" ] && [ ! -L "$d/$1" ] && [ -O "$d/$1" ] || return 0
+    IFS= read -r REPLY < "$d/$1" || true
+}
+[ -e "$d/hyprcrt.so" ] || exit 0                           # full mode was never built: stay in lite mode
+readline built-for;     built=$REPLY
+readline built-version; have=$REPLY
+
+# ---- the Hyprland the headers describe (the running compositor may still be the old one)
+hdr=""
+while IFS= read -r line; do
+    [[ $line =~ GIT_COMMIT_HASH[[:space:]]+\"([0-9a-f]+)\" ]] && { hdr=${BASH_REMATCH[1]}; break; }
+done 2>/dev/null < /usr/include/hyprland/src/version.h
+[ -n "$hdr" ] || exit 0                                    # no headers, nothing to do
+
+# ---- the version the plugin sources are (read only; nothing from the checkout is executed)
+want=""
+for c in "$home/.config/omarchy/plugins/danexpo.crt" "$home/.config/omarchy/plugins/hyprcrt"; do
+    [ -f "$c/manifest.json" ] || continue
+    while IFS= read -r line; do
+        [[ $line =~ \"version\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && { want=${BASH_REMATCH[1]}; break; }
+    done < "$c/manifest.json"
+    [ -n "$want" ] && break
+done
+[[ $want =~ ^[0-9A-Za-z.+-]*$ ]] || want=""                # a version is a plain token, or it is nothing
+
+[ "$built" = "$hdr" ] && { [ -z "$want" ] || [ "$have" = "$want" ]; } && exit 0   # still matching
+if [ -z "$want" ]; then
+    notify normal "CRT filter: Hyprland changed to ${hdr:0:8}, but the plugin sources were not found; run: hyprcrt build --source <repo>"
+    exit 0
+fi
+[ "$built" = "$hdr" ] && what="updated to hyprcrt $want" || what="refreshed for the new Hyprland"
+
+# ---- the prebuilt of that version: this project's release for it first, then the rolling prebuilt release
+fetch() { # url dest: bounded, so a network that hangs gives up about as soon as one that refuses
+    if [ -x /usr/bin/curl ]; then /usr/bin/curl -fsSL --connect-timeout 5 --speed-time 20 --retry 2 --retry-max-time 20 -o "$2" "$1"
+    elif [ -x /usr/bin/wget ]; then /usr/bin/wget -q --timeout=20 --tries=1 -O "$2" "$1"
+    else return 1; fi
+}
+tmp=$d/.post-update.$$
+/usr/bin/mkdir -m 700 "$tmp" 2>/dev/null || exit 0        # ours alone, or the hook does nothing
+trap '/usr/bin/rm -rf "$tmp"' EXIT
+
+got=0
+bases=("https://github.com/danexpo/hyprcrt/releases/download/v$want" https://github.com/danexpo/hyprcrt/releases/download/prebuilt)
+[ -n "$release" ] && bases=("$release")
+for base in "${bases[@]}"; do
+    /usr/bin/rm -f "$tmp/SHA256SUMS" "$tmp/VERSIONS"
+    fetch "$base/SHA256SUMS" "$tmp/SHA256SUMS" 2>/dev/null || continue
+    fetch "$base/VERSIONS" "$tmp/VERSIONS" 2>/dev/null || continue
+    sum="" ver=""
+    while IFS= read -r line; do
+        [[ $line =~ ^([0-9a-f]{64})[[:space:]]+\*?hyprcrt-$hdr\.so$ ]] && { sum=${BASH_REMATCH[1]}; break; }
+    done < "$tmp/SHA256SUMS"
+    while IFS= read -r line; do
+        [[ $line =~ ^([^[:space:]]+)[[:space:]]+hyprcrt-$hdr\.so$ ]] && { ver=${BASH_REMATCH[1]}; break; }
+    done < "$tmp/VERSIONS"
+    [ -n "$sum" ] && [ "$ver" = "$want" ] || continue     # no library for this Hyprland, or not of this version
+    fetch "$base/hyprcrt-$hdr.so" "$tmp/hyprcrt-$hdr.so" 2>/dev/null || continue
+    actual=$(/usr/bin/sha256sum "$tmp/hyprcrt-$hdr.so") && [ "${actual%% *}" = "$sum" ] || continue
+    got=1
+    break
+done
+
+if [ "$got" = 0 ]; then
+    notify normal "CRT filter: no prebuilt plugin of hyprcrt $want for Hyprland ${hdr:0:8} yet; run: hyprcrt build (lite mode meanwhile)"
     exit 0
 fi
 
-# The running compositor is still the old one (or still runs the old library); fetch or build without loading.
-if "$src/tools/crt-build" --no-load --source "$src"; then
-    [ "$built" = "$hdr" ] && what="updated to hyprcrt $srcver" || what="rebuilt for the new Hyprland"
-    command -v omarchy-notification-send >/dev/null && omarchy-notification-send -u low "CRT filter $what; it loads after the next restart (or now: hyprcrt plugin unload && hyprcrt plugin load)" || true
-else
-    command -v omarchy-notification-send >/dev/null && omarchy-notification-send -u critical "CRT filter: rebuild failed, running in lite mode (see hyprcrt build)" || true
-    rm -f "$data/hyprcrt.so"   # do not let Hyprland try to load a stale .so at start
-fi
+# ---- install beside the running library and rename: a mapped older inode stays valid, nothing is overwritten in place
+/usr/bin/chmod 755 "$tmp/hyprcrt-$hdr.so"
+printf '%s\n' "$hdr" > "$tmp/built-for"
+printf '%s\n' "$want" > "$tmp/built-version"
+/usr/bin/mv -f "$tmp/hyprcrt-$hdr.so" "$d/hyprcrt-$hdr.so" &&
+/usr/bin/ln -sfn "hyprcrt-$hdr.so" "$tmp/hyprcrt.so" && /usr/bin/mv -Tf "$tmp/hyprcrt.so" "$d/hyprcrt.so" &&
+/usr/bin/mv -f "$tmp/built-for" "$d/built-for" && /usr/bin/mv -f "$tmp/built-version" "$d/built-version" ||
+    { notify critical "CRT filter: could not install the updated plugin (see hyprcrt build)"; exit 0; }
+notify low "CRT filter $what (hyprcrt $want); it loads after the next restart (or now: hyprcrt plugin unload && hyprcrt plugin load)"
 exit 0

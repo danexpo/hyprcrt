@@ -55,7 +55,15 @@ if not disabled and exists(so) then
   end
 end
 
-local full = exists(so) and not disabled
+-- a library built for another Hyprland commit (an update whose hook found no prebuilt of it yet) is not offered:
+-- Hyprland would refuse it after this file ran, and the screen would be left with no filter at all rather than
+-- the lite shader. The running commit is the instance signature's first field; built-for is what the library was
+-- built against. Unknown on either side counts as compatible (a distribution package carries no built-for).
+local running  = (os.getenv("HYPRLAND_INSTANCE_SIGNATURE") or ""):match("^(%x+)_")
+local builtfor = (readfile(data .. "/built-for") or ""):match("^(%x+)")
+local compatible = not running or not builtfor or running == builtfor
+
+local full = exists(so) and not disabled and compatible
 if full then
   hl.plugin.load(so)
   -- never stack the lite shader on top of the plugin

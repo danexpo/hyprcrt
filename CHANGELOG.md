@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.3 (2026-09-12)
+
+### Changed
+- The Omarchy post-update hook (`omarchy-plugin/hooks/hyprcrt-rebuild`) runs unattended after every `omarchy update`,
+  so it no longer executes anything from the plugin checkout, nor anything found on the PATH, and no longer deletes
+  a library. It closes its environment (fixed PATH, no inherited variables or functions but what the notifier needs,
+  the home directory from the passwd database), reads the checkout only for its version, names the few programs it
+  needs by absolute path and does the rest with bash builtins, holds its state directory open (a real directory of
+  the user's that nobody else can write) and reads and writes through that descriptor, never through a symlink,
+  writing beside the target and renaming into place. It installs only a library of the checkout's version, downloaded
+  from this repository's release for that version (or the rolling prebuilt release, which states each library's
+  version) and verified against the release's SHA256SUMS; when there is none for the new Hyprland it says so and
+  leaves compiling to the user (`hyprcrt build`). `tests/run-install-test.sh` runs it against a stand-in release with
+  shadow executables on the PATH, a stub `crt-build` in the checkout and a symlink planted at `built-version`:
+  nothing of those runs or is followed, a bad checksum, another version and a group-writable state directory change
+  nothing.
+- The loader no longer offers Hyprland a library built for another Hyprland commit (`built-for` against the running
+  instance's commit): Hyprland would refuse it after the config ran and leave the screen with no filter at all, now
+  lite mode takes over until `hyprcrt build` or the hook has installed the right one.
+
 ## 0.2.2 (2026-09-12)
 
 ### Fixed

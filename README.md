@@ -72,8 +72,13 @@ in lite mode, `grim`.
 ### After a Hyprland update
 
 A Hyprland plugin only loads into the exact Hyprland commit it was built for. Install the hook and
-`omarchy update` fetches or rebuilds it automatically when Hyprland changed (the new library loads
-after the next restart; until then you are in lite mode, not without a filter):
+`omarchy update` fetches the prebuilt for the new Hyprland automatically (the new library loads after the
+next restart; until then you are in lite mode, not without a filter). The hook runs unattended, so it
+executes nothing from the plugin checkout and nothing found on the PATH: it only downloads the prebuilt of
+the checkout's version from this repository's releases and installs it once the checksum matches. When
+there is no prebuilt for the new Hyprland yet, it tells you to run `hyprcrt build`, which compiles from
+the checkout; the loader keeps the filter in lite mode meanwhile rather than offer Hyprland a library it
+would refuse:
 
 ```sh
 omarchy hook install post-update ~/.config/omarchy/plugins/danexpo.crt/omarchy-plugin/hooks/hyprcrt-rebuild
@@ -84,10 +89,11 @@ If you update with pacman directly, `omarchy-plugin/hooks/hyprcrt-rebuild.hook` 
 
 ### After `omarchy plugin update`
 
-The checkout moves on to the new version, the installed library does not. The shell service (and the hook
-above, at the next `omarchy update`) notices and fetches the prebuilt of the new version, or builds it, and
-tells you; it loads after the next restart, or now with `hyprcrt plugin unload && hyprcrt plugin load`.
-Without the service, `hyprcrt plugin status` says `stale` and `hyprcrt build` does the same.
+The checkout moves on to the new version, the installed library does not. The shell service notices at the
+next shell start and fetches the prebuilt of the new version, or builds it, and tells you; the hook above
+does the same at the next `omarchy update` (fetching only). It loads after the next restart, or now with
+`hyprcrt plugin unload && hyprcrt plugin load`. Without the service, `hyprcrt plugin status` says `stale`
+and `hyprcrt build` does the same.
 
 ### If Hyprland ever crashes with the plugin loaded
 
