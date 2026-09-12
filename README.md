@@ -48,8 +48,14 @@ full-mode plugin** in the panel or run
 ```
 
 This installs a prebuilt `hyprcrt.so` for the exact Hyprland commit you are running when the
-project's releases have one (checked against `SHA256SUMS`), and compiles it only when they do not.
-The plugin loads at the next Hyprland start; to load it right away run `hyprcrt plugin load`.
+project's releases have one (downloaded from this repository's GitHub releases, checked against
+`SHA256SUMS`, and only ever a library of the version you have checked out), and compiles it only when
+they do not. The plugin loads at the next Hyprland start; to load it right away run `hyprcrt plugin load`.
+
+Everything it writes is yours to remove (see Removing it): `~/.local/share/hyprcrt`, `~/.config/hyprcrt`,
+`~/.local/state/hyprcrt`, a `~/.local/bin/hyprcrt` link, an Omarchy toggle file, and the **Style > CRT
+filter** entries added to `~/.config/omarchy/extensions/omarchy-menu.jsonc` (your own entries are kept).
+Nothing needs root; the optional pacman hook is the one file you copy into `/etc` yourself.
 
 Keybindings are opt-in: add this line to `~/.config/hypr/bindings.lua` to get `SUPER+ALT+C`
 (toggle), `SUPER+ALT+SHIFT+C` (next preset), `SUPER+ALT+X` (hold to compare with the plain
@@ -59,8 +65,9 @@ picture) and `SUPER+CTRL+ALT+C` (panel):
 pcall(dofile, os.getenv("HOME") .. "/.config/omarchy/plugins/danexpo.crt/omarchy-plugin/bindings.lua")
 ```
 
-`hyprcrt` needs `bash`, `python3` and `hyprctl`; `hyprcrt shot` wants ImageMagick and, in lite mode,
-`grim`.
+`hyprcrt` needs `bash`, `python3`, `jq` and `hyprctl`, and `curl` or `wget` for the prebuilt download
+(`base-devel` and the Hyprland headers only when it has to compile); `hyprcrt shot` wants ImageMagick and,
+in lite mode, `grim`.
 
 ### After a Hyprland update
 
