@@ -5,7 +5,9 @@ name: build
 #   - every run uploads hyprcrt-<hyprland commit>.so as a workflow artifact
 #   - pushes to main, the weekly run and manual runs add it to the rolling "prebuilt" release
 #     (tools/crt-fetch reads that release), with its checksum in SHA256SUMS and the hyprcrt version it
-#     was built from (manifest.json) in VERSIONS, one line per library
+#     was built from (manifest.json) in VERSIONS, one line per library; both lists carry a detached Ed25519
+#     signature (.sig) by the release key in the HYPRCRT_SIGNING_KEY secret, whose public half is
+#     release-key.pub in the tree and inline in the post-update hook: installers trust the lists only signed
 #   - a v* tag creates a proper release with the same asset, checksum and version files
 on:
   push:
@@ -55,7 +57,15 @@ jobs:
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           GH_TOKEN: ${{ github.token }}
+          HYPRCRT_SIGNING_KEY: ${{ secrets.HYPRCRT_SIGNING_KEY }}
         run: |
+          sign() { # files: a detached Ed25519 signature beside each, by the release key
+            [ -n "$HYPRCRT_SIGNING_KEY" ] || { echo "HYPRCRT_SIGNING_KEY secret is not set; unsigned lists are not published" >&2; exit 1; }
+            (umask 077 && printf '%s\n' "$HYPRCRT_SIGNING_KEY" > "$RUNNER_TEMP/sign.pem")
+            for f in "$@"; do openssl pkeyutl -sign -inkey "$RUNNER_TEMP/sign.pem" -rawin -in "$f" -out "$f.sig"; done
+            rm -f "$RUNNER_TEMP/sign.pem"
+            openssl pkeyutl -verify -pubin -inkey release-key.pub -rawin -in "$1" -sigfile "$1.sig"
+          }
           git config --global --add safe.directory "$PWD"
           commit=${{ steps.hash.outputs.commit }}
           if ! gh release view prebuilt >/dev/null 2>&1; then
@@ -70,21 +80,31 @@ jobs:
             cat "dist/hyprcrt-$commit.so.$ext" >> "dist/$list.new"
             sort -k2 "dist/$list.new" > "dist/$list"
           done
-          gh release upload prebuilt "dist/hyprcrt-$commit.so" dist/SHA256SUMS dist/VERSIONS --clobber
+          sign dist/SHA256SUMS dist/VERSIONS
+          gh release upload prebuilt "dist/hyprcrt-$commit.so" dist/SHA256SUMS dist/SHA256SUMS.sig dist/VERSIONS dist/VERSIONS.sig --clobber
 
       # tagged release: the same asset, checksum and version files attached to the tag
       - name: Publish the tagged release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
+          HYPRCRT_SIGNING_KEY: ${{ secrets.HYPRCRT_SIGNING_KEY }}
         run: |
+          sign() { # files: a detached Ed25519 signature beside each, by the release key
+            [ -n "$HYPRCRT_SIGNING_KEY" ] || { echo "HYPRCRT_SIGNING_KEY secret is not set; unsigned lists are not published" >&2; exit 1; }
+            (umask 077 && printf '%s\n' "$HYPRCRT_SIGNING_KEY" > "$RUNNER_TEMP/sign.pem")
+            for f in "$@"; do openssl pkeyutl -sign -inkey "$RUNNER_TEMP/sign.pem" -rawin -in "$f" -out "$f.sig"; done
+            rm -f "$RUNNER_TEMP/sign.pem"
+            openssl pkeyutl -verify -pubin -inkey release-key.pub -rawin -in "$1" -sigfile "$1.sig"
+          }
           git config --global --add safe.directory "$PWD"
           commit=${{ steps.hash.outputs.commit }}
           cp "dist/hyprcrt-$commit.so.sha256" dist/SHA256SUMS
           cp "dist/hyprcrt-$commit.so.version" dist/VERSIONS
-          gh release create "$GITHUB_REF_NAME" "dist/hyprcrt-$commit.so" dist/SHA256SUMS dist/VERSIONS \
-            --title "hyprcrt $GITHUB_REF_NAME" --generate-notes || \
-          gh release upload "$GITHUB_REF_NAME" "dist/hyprcrt-$commit.so" dist/SHA256SUMS dist/VERSIONS --clobber
+          sign dist/SHA256SUMS dist/VERSIONS
+          assets=("dist/hyprcrt-$commit.so" dist/SHA256SUMS dist/SHA256SUMS.sig dist/VERSIONS dist/VERSIONS.sig)
+          gh release create "$GITHUB_REF_NAME" "${assets[@]}" --title "hyprcrt $GITHUB_REF_NAME" --generate-notes || \
+          gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
 
   shaders:
     name: Shaders compile

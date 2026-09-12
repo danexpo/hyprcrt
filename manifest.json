@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "danexpo.crt",
   "name": "CRT Filter",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "author": "Dan Expo",
   "license": "MIT",
   "description": "A system-wide CRT filter for Hyprland: energy-conserving scanlines, phosphor mask, halation, afterglow and curved glass. Lite mode uses Hyprland's screen shader and needs no build; full mode is a Hyprland plugin built on this machine.",

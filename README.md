@@ -48,9 +48,9 @@ full-mode plugin** in the panel or run
 ```
 
 This installs a prebuilt `hyprcrt.so` for the exact Hyprland commit you are running when the
-project's releases have one (downloaded from this repository's GitHub releases, checked against
-`SHA256SUMS`, and only ever a library of the version you have checked out), and compiles it only when
-they do not. The plugin loads at the next Hyprland start; to load it right away run `hyprcrt plugin load`.
+project's releases have one (downloaded from this repository's GitHub releases, checked against a
+`SHA256SUMS` whose signature verifies against `release-key.pub` in the tree, and only ever a library of
+the version you have checked out), and compiles it only when they do not. The plugin loads at the next Hyprland start; to load it right away run `hyprcrt plugin load`.
 
 Everything it writes is yours to remove (see Removing it): `~/.local/share/hyprcrt`, `~/.config/hyprcrt`,
 `~/.local/state/hyprcrt`, a `~/.local/bin/hyprcrt` link, an Omarchy toggle file, and the **Style > CRT
@@ -75,7 +75,9 @@ A Hyprland plugin only loads into the exact Hyprland commit it was built for. In
 `omarchy update` fetches the prebuilt for the new Hyprland automatically (the new library loads after the
 next restart; until then you are in lite mode, not without a filter). The hook runs unattended, so it
 executes nothing from the plugin checkout and nothing found on the PATH: it only downloads the prebuilt of
-the checkout's version from this repository's releases and installs it once the checksum matches. When
+the checkout's version from this repository's releases and installs it once its checksum is in a `SHA256SUMS`
+signed by the project's release key (the public key is written into the hook itself, so the release page is
+not what is trusted), with a byte ceiling on every download. When
 there is no prebuilt for the new Hyprland yet, it tells you to run `hyprcrt build`, which compiles from
 the checkout; the loader keeps the filter in lite mode meanwhile rather than offer Hyprland a library it
 would refuse:

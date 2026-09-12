@@ -3,9 +3,11 @@
 #
 #   crt-fetch [--check] [--quiet] [--want <version>]
 #
-# The CI publishes hyprcrt-<hyprland commit>.so plus SHA256SUMS and VERSIONS files to a rolling "prebuilt"
-# GitHub release (and to every tagged release). This script reads the commit the installed Hyprland headers
-# describe, downloads the matching library and its checksum line, verifies the checksum, and installs
+# The CI publishes hyprcrt-<hyprland commit>.so plus SHA256SUMS and VERSIONS files, each with a detached Ed25519
+# signature (.sig) by the project's release key, to a rolling "prebuilt" GitHub release (and to every tagged
+# release). This script reads the commit the installed Hyprland headers describe, downloads the two lists and
+# checks their signatures against release-key.pub beside this tree (so the release page is not what is trusted),
+# downloads the matching library, verifies its checksum against the signed list, and installs
 # it atomically as ~/.local/share/hyprcrt/hyprcrt-<hash>.so (never overwriting a file the running
 # compositor may have mapped), recording the Hyprland commit in built-for and the hyprcrt version the
 # library was built from (its VERSIONS line) in built-version. Exit 0 on success, 3 when no prebuilt
@@ -17,9 +19,12 @@
 set -euo pipefail
 
 # The GitHub repository the releases live in. Override with HYPRCRT_REPO=owner/name, or point
-# HYPRCRT_RELEASE_URL at any directory that serves SHA256SUMS and hyprcrt-<hash>.so.
+# HYPRCRT_RELEASE_URL at any directory that serves SHA256SUMS(.sig), VERSIONS(.sig) and hyprcrt-<hash>.so, and
+# HYPRCRT_RELEASE_KEY at the public key those signatures are checked against (the tests sign with their own).
 repo=${HYPRCRT_REPO:-danexpo/hyprcrt}
 base=${HYPRCRT_RELEASE_URL:-https://github.com/$repo/releases/download/prebuilt}
+here=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+key=${HYPRCRT_RELEASE_KEY:-${HYPRCRT_ROOT:-$here/..}/release-key.pub}
 data=${XDG_DATA_HOME:-$HOME/.local/share}/hyprcrt
 check=0 quiet=0 want=""
 while [ $# -gt 0 ]; do
@@ -46,16 +51,27 @@ fi
 # Bounded, so a network that hangs (a captive portal, a firewall that drops packets) gives up about as soon as one that
 # refuses and crt-build compiles instead: 5 s to connect, 20 s without a byte, no retry once 20 s are spent. A stall
 # bound rather than a total one (--max-time), so a slow but live link still gets the 9 MB library.
-fetch() { # url dest
-    if command -v curl >/dev/null; then curl -fsSL --connect-timeout 5 --speed-time 20 --retry 2 --retry-max-time 20 -o "$2" "$1"
-    elif command -v wget >/dev/null; then wget -q --timeout=20 --tries=1 -O "$2" "$1"
-    else die "curl or wget is required"; fi
+fetch() { # url dest max: at most max bytes land on disk (one more is read to tell)
+    local url=$1 dest=$2 max=$3
+    if command -v curl >/dev/null; then curl -fsL --connect-timeout 5 --speed-time 20 --retry 2 --retry-max-time 20 --max-filesize "$max" "$url"
+    elif command -v wget >/dev/null; then wget -q --timeout=20 --tries=1 -O - "$url"
+    else die "curl or wget is required"; fi | head -c "$((max + 1))" > "$dest" || return 1
+    [ "$(stat -c %s "$dest")" -le "$max" ]
 }
+verify() { # file: its detached signature file.sig, by the release key
+    openssl pkeyutl -verify -pubin -inkey "$key" -rawin -in "$1" -sigfile "$1.sig" >/dev/null 2>&1
+}
+command -v openssl >/dev/null || die "openssl is required to check the release signature"
+[ -f "$key" ] || die "release public key not found at $key"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-if ! fetch "$base/SHA256SUMS" "$tmp/SHA256SUMS" 2>/dev/null; then
+if ! fetch "$base/SHA256SUMS" "$tmp/SHA256SUMS" 65536; then
     say "no prebuilt release reachable at $base"
+    exit 3
+fi
+if ! fetch "$base/SHA256SUMS.sig" "$tmp/SHA256SUMS.sig" 4096 || ! verify "$tmp/SHA256SUMS"; then
+    say "the release at $base carries no SHA256SUMS signature by the release key; not trusting it (build one with crt-build)"
     exit 3
 fi
 line=$(grep -E "  hyprcrt-$hdr\.so$" "$tmp/SHA256SUMS" || true)
@@ -66,7 +82,7 @@ fi
 # which hyprcrt the library was built from: the rolling release keeps one library per Hyprland commit, each from
 # whatever hyprcrt was current when it was built, so the version is per line, not per release
 ver=""
-if fetch "$base/VERSIONS" "$tmp/VERSIONS" 2>/dev/null; then
+if fetch "$base/VERSIONS" "$tmp/VERSIONS" 65536 && fetch "$base/VERSIONS.sig" "$tmp/VERSIONS.sig" 4096 && verify "$tmp/VERSIONS"; then
     ver=$(sed -n "s/^\([^ ]*\)  hyprcrt-$hdr\.so\$/\1/p" "$tmp/VERSIONS" | head -n1)
 fi
 if [ -n "$want" ] && [ "$ver" != "$want" ]; then
@@ -79,7 +95,7 @@ if [ "$check" = 1 ]; then
 fi
 
 say "downloading hyprcrt-${hdr:0:12}.so"
-fetch "$base/hyprcrt-$hdr.so" "$tmp/hyprcrt-$hdr.so" || die "download failed"
+fetch "$base/hyprcrt-$hdr.so" "$tmp/hyprcrt-$hdr.so" 33554432 || die "download failed (or over the 32 MiB ceiling)"
 (cd "$tmp" && printf '%s\n' "$line" | sha256sum -c --quiet -) || die "checksum mismatch, not installing"
 
 mkdir -p "$data"

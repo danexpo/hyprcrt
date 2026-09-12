@@ -8,24 +8,37 @@
 #
 # It runs unattended, so it is kept to what can be trusted without a person watching:
 # - it executes nothing from the plugin checkout, nor anything found on the PATH: the checkout is only read for
-#   its version, and the few programs it needs are named by their absolute paths (/usr/bin/curl or wget,
-#   sha256sum, stat, mkdir, mv, ln, chmod, rm, and Omarchy's notifier); everything else is a bash builtin;
+#   its version, and the few programs it needs are named by their absolute paths (/usr/bin/curl, head, openssl,
+#   sha256sum, stat, mkdir, mv, ln, chmod, rm, and Omarchy's notifier; all of them are on every Omarchy install,
+#   curl and openssl being dependencies of pacman itself); everything else is a bash builtin;
 # - it closes its environment first: every inherited variable and function is dropped but the session bus and
 #   runtime directory the notifier needs, PATH is fixed, and the home directory comes from the passwd database,
 #   not from HOME;
 # - the only thing it ever installs is a library of the checkout's version, downloaded over TLS from this
-#   project's release for that version (or the rolling prebuilt release, which states each library's version)
-#   and verified against the release's SHA256SUMS. When no such prebuilt exists, compiling from the checkout is
-#   left to the user: it says so, and `hyprcrt build` does it;
-# - its state directory is checked to be a real directory of the user's, not writable by others, and held open;
-#   every read and write goes through that descriptor, nothing is read through a symlink, files are written
-#   beside their target and renamed into place, and nothing is deleted but its own temporary directory.
+#   project's release for that version (or the rolling prebuilt release, which states each library's version).
+#   The release's SHA256SUMS and VERSIONS files must carry signatures (SHA256SUMS.sig, VERSIONS.sig, made by
+#   the CI with the project's Ed25519 release key) that verify against the public key written into this file,
+#   so the release page itself is not what is trusted: a library is installed only when its checksum is in a
+#   SHA256SUMS the key holder signed. Every download has a byte ceiling. When no such prebuilt exists,
+#   compiling from the checkout is left to the user: it says so, and `hyprcrt build` does it;
+# - its state directory is held open first and then checked on that descriptor to be a directory of the user's
+#   that nobody else can write (owner, and no group or world write bit); every read and write goes through the
+#   descriptor, a state file is opened and then checked on its own descriptor to be a regular file of the user's,
+#   files are written beside their target and renamed into place, and nothing is deleted but its own temporary
+#   directory.
 # The new library loads at the next Hyprland start (or now: hyprcrt plugin unload && hyprcrt plugin load).
 #
 # Install: omarchy hook install post-update <this file>   (omarchy-hook runs it with no arguments)
-# For tests only: --home <dir> stands in for the passwd home, --release <url> for the release base URL.
+# For tests only: --home <dir> stands in for the passwd home, --release <url> for the release base URL,
+# --key <file> for the release public key (a caller who can pass arguments already runs as the user; omarchy-hook
+# passes none).
 # MIT (c) 2026 Dan Expo
-set -u
+set -uo pipefail
+
+# the project's release public key (Ed25519, PEM): the same key is release-key.pub in the repository
+release_key='-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAfAyjIPoZTKhYuXgi6H03aMHgVtez7vpyjkWkPvVFk1A=
+-----END PUBLIC KEY-----'
 
 # ---- a closed environment: fixed PATH, no inherited functions, nothing kept but what the notifier needs
 keep_runtime=${XDG_RUNTIME_DIR:-} keep_bus=${DBUS_SESSION_BUS_ADDRESS:-} keep_wl=${WAYLAND_DISPLAY:-}
@@ -38,11 +51,12 @@ export PATH=/usr/bin
 [ -n "$keep_wl" ] && export WAYLAND_DISPLAY=$keep_wl
 
 # ---- the user's home, from the passwd database (an argument only for the tests; omarchy-hook passes none)
-home="" release=""
+home="" release="" keyfile=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --home) home=$2; shift ;;
         --release) release=$2; shift ;;
+        --key) keyfile=$2; shift ;;
         *) exit 0 ;;
     esac
     shift
@@ -63,18 +77,24 @@ notify() { # urgency text
     /usr/share/omarchy/bin/omarchy-notification-send -u "$1" "$2" >/dev/null 2>&1 || true
 }
 
-# ---- the state directory, held open: a real directory of ours that nobody else can write
+# ---- the state directory, held open and then checked on the descriptor: a directory of ours nobody else can write
 data=$home/.local/share/hyprcrt
-[ -d "$data" ] && [ ! -L "$data" ] && [ -O "$data" ] || exit 0
-mode=$(/usr/bin/stat -c %a "$data" 2>/dev/null) || exit 0
-[[ $mode =~ ^[0-7]?[0-7][0-5][0-5]$ ]] || exit 0            # no group or world write bit
-exec {dfd}<"$data" || exit 0
+[ -d "$data" ] && [ ! -L "$data" ] || exit 0
+exec {dfd}<"$data" 2>/dev/null || exit 0
 d=/dev/fd/$dfd                                             # every path below is relative to the held directory
+read -r owner mode kind < <(/usr/bin/stat -L -c '%u %a %F' "$d" 2>/dev/null) || exit 0
+[ "$owner" = "$UID" ] && [ "$kind" = directory ] || exit 0
+(( (8#$mode & 8#022) == 0 )) || exit 0                     # no group or world write bit, tested as bits
 
-readline() { # <name> -> REPLY: the first line of a regular, non-symlink file of ours in the state directory, else ""
+readline() { # <name> -> REPLY: the first line of a state file, opened first and then checked on its descriptor to be a
+    local fd owner kind   # regular file of ours (a symlink is never opened; a file swapped after the open is still ours)
     REPLY=""
-    [ -f "$d/$1" ] && [ ! -L "$d/$1" ] && [ -O "$d/$1" ] || return 0
-    IFS= read -r REPLY < "$d/$1" || true
+    [ -f "$d/$1" ] && [ ! -L "$d/$1" ] || return 0
+    exec {fd}<"$d/$1" 2>/dev/null || return 0
+    if read -r owner kind < <(/usr/bin/stat -L -c '%u %F' "/dev/fd/$fd" 2>/dev/null) && [ "$owner" = "$UID" ] && [ "$kind" = "regular file" ]; then
+        IFS= read -r REPLY <&"$fd" || true
+    fi
+    exec {fd}<&-
 }
 [ -e "$d/hyprcrt.so" ] || exit 0                           # full mode was never built: stay in lite mode
 readline built-for;     built=$REPLY
@@ -106,22 +126,35 @@ fi
 [ "$built" = "$hdr" ] && what="updated to hyprcrt $want" || what="refreshed for the new Hyprland"
 
 # ---- the prebuilt of that version: this project's release for it first, then the rolling prebuilt release
-fetch() { # url dest: bounded, so a network that hangs gives up about as soon as one that refuses
-    if [ -x /usr/bin/curl ]; then /usr/bin/curl -fsSL --connect-timeout 5 --speed-time 20 --retry 2 --retry-max-time 20 -o "$2" "$1"
-    elif [ -x /usr/bin/wget ]; then /usr/bin/wget -q --timeout=20 --tries=1 -O "$2" "$1"
-    else return 1; fi
+fetch() { # url dest max: at most max bytes land on disk (one more is read to tell), and time-bounded, so a network
+    local url=$1 dest=$2 max=$3        # that hangs gives up about as soon as one that refuses
+    /usr/bin/rm -f "$dest"
+    /usr/bin/curl -fsL --connect-timeout 5 --speed-time 20 --retry 2 --retry-max-time 20 --max-filesize "$max" "$url" | /usr/bin/head -c "$((max + 1))" > "$dest" || return 1
+    [ "$(/usr/bin/stat -c %s "$dest")" -le "$max" ]
 }
+verify() { # file: its detached Ed25519 signature file.sig, by the release key this hook carries
+    /usr/bin/openssl pkeyutl -verify -pubin -inkey "$tmp/release-key.pub" -rawin -in "$1" -sigfile "$1.sig" >/dev/null 2>&1
+}
+for t in /usr/bin/curl /usr/bin/head /usr/bin/openssl /usr/bin/sha256sum; do
+    [ -x "$t" ] || { notify normal "CRT filter: $t is missing, cannot fetch the plugin for Hyprland ${hdr:0:8}; run: hyprcrt build"; exit 0; }
+done
 tmp=$d/.post-update.$$
 /usr/bin/mkdir -m 700 "$tmp" 2>/dev/null || exit 0        # ours alone, or the hook does nothing
 trap '/usr/bin/rm -rf "$tmp"' EXIT
+if [ -n "$keyfile" ]; then IFS= read -r -d '' release_key < "$keyfile" || true; fi
+printf '%s\n' "$release_key" > "$tmp/release-key.pub"
 
 got=0
 bases=("https://github.com/danexpo/hyprcrt/releases/download/v$want" https://github.com/danexpo/hyprcrt/releases/download/prebuilt)
 [ -n "$release" ] && bases=("$release")
 for base in "${bases[@]}"; do
-    /usr/bin/rm -f "$tmp/SHA256SUMS" "$tmp/VERSIONS"
-    fetch "$base/SHA256SUMS" "$tmp/SHA256SUMS" 2>/dev/null || continue
-    fetch "$base/VERSIONS" "$tmp/VERSIONS" 2>/dev/null || continue
+    # the two lists and their signatures: nothing in them counts until the signature verifies against the pinned key
+    fetch "$base/SHA256SUMS" "$tmp/SHA256SUMS" 65536 || continue
+    fetch "$base/SHA256SUMS.sig" "$tmp/SHA256SUMS.sig" 4096 || continue
+    verify "$tmp/SHA256SUMS" || continue
+    fetch "$base/VERSIONS" "$tmp/VERSIONS" 65536 || continue
+    fetch "$base/VERSIONS.sig" "$tmp/VERSIONS.sig" 4096 || continue
+    verify "$tmp/VERSIONS" || continue
     sum="" ver=""
     while IFS= read -r line; do
         [[ $line =~ ^([0-9a-f]{64})[[:space:]]+\*?hyprcrt-$hdr\.so$ ]] && { sum=${BASH_REMATCH[1]}; break; }
@@ -130,14 +163,14 @@ for base in "${bases[@]}"; do
         [[ $line =~ ^([^[:space:]]+)[[:space:]]+hyprcrt-$hdr\.so$ ]] && { ver=${BASH_REMATCH[1]}; break; }
     done < "$tmp/VERSIONS"
     [ -n "$sum" ] && [ "$ver" = "$want" ] || continue     # no library for this Hyprland, or not of this version
-    fetch "$base/hyprcrt-$hdr.so" "$tmp/hyprcrt-$hdr.so" 2>/dev/null || continue
+    fetch "$base/hyprcrt-$hdr.so" "$tmp/hyprcrt-$hdr.so" 33554432 || continue   # 32 MiB; the library is under 1 MB
     actual=$(/usr/bin/sha256sum "$tmp/hyprcrt-$hdr.so") && [ "${actual%% *}" = "$sum" ] || continue
     got=1
     break
 done
 
 if [ "$got" = 0 ]; then
-    notify normal "CRT filter: no prebuilt plugin of hyprcrt $want for Hyprland ${hdr:0:8} yet; run: hyprcrt build (lite mode meanwhile)"
+    notify normal "CRT filter: no signed prebuilt plugin of hyprcrt $want for Hyprland ${hdr:0:8} yet; run: hyprcrt build (lite mode meanwhile)"
     exit 0
 fi
 

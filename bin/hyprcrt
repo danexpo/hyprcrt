@@ -486,7 +486,7 @@ case "$cmd" in
         fi
         mkdir -p "$data"
         rm -rf "$data/shaders" "$data/presets" "$data/tools"
-        cp -r "$root/shaders" "$root/presets" "$root/tools" "$data/"
+        cp -r "$root/shaders" "$root/presets" "$root/tools" "$root/release-key.pub" "$data/"
         chmod +x "$data"/tools/*
         # the offscreen shader runner makes `hyprcrt shot` work in lite mode; optional
         if [ -f "$root/tests/shadercheck.c" ] && command -v gcc >/dev/null && pkg-config --exists egl glesv2 gbm 2>/dev/null; then

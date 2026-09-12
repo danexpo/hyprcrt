@@ -1,7 +1,7 @@
 #!/bin/bash
 # run-install-test.sh - `hyprcrt install` from a checkout on a clean HOME, as a stranger would run it.
 #   tests/run-install-test.sh [plugin.so]   (default plugin/out/hyprcrt.so, which `make plugin` builds)
-# A local directory stands in for the GitHub "prebuilt" release: SHA256SUMS plus the library, named after the commit
+# A local directory stands in for the GitHub "prebuilt" release: SHA256SUMS and VERSIONS, signed with a key made here, plus the library, named after the commit
 # the installed Hyprland headers carry. So the prebuilt path runs end to end offline: crt-fetch --check finds that
 # commit, the download is verified, nothing compiles, and the files the README promises are where it says, inside a
 # time a person would wait. A second run against the same sources leaves the library alone; sources of a newer
@@ -25,14 +25,20 @@ h=$sb/home
 mkdir -p "$h" "$sb/run" "$sb/release" "$sb/badrelease"
 ver=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$root/manifest.json" | head -n1)
 [ -n "$ver" ] || { echo "install: no version in manifest.json"; exit 1; }
+# the stand-in release is signed with a key made here, standing in for the CI's release key (the tools take the
+# public key from HYPRCRT_RELEASE_KEY, the hook from --key); a second key stands in for anyone else's
+openssl genpkey -algorithm ed25519 -out "$sb/sign.pem" 2>/dev/null && openssl pkey -in "$sb/sign.pem" -pubout -out "$sb/release-key.pub" 2>/dev/null
+openssl genpkey -algorithm ed25519 -out "$sb/other.pem" 2>/dev/null
+sign() { local dir=$1 key=${2:-$sb/sign.pem} f; for f in SHA256SUMS VERSIONS; do [ -f "$dir/$f" ] && openssl pkeyutl -sign -inkey "$key" -rawin -in "$dir/$f" -out "$dir/$f.sig"; done; return 0; }
+lists() { local dir=$1 v=$2; (cd "$dir" && sha256sum "hyprcrt-$hdr.so" > SHA256SUMS && echo "$v  hyprcrt-$hdr.so" > VERSIONS) && sign "$dir"; }
 cp "$lib" "$sb/release/hyprcrt-$hdr.so"
-(cd "$sb/release" && sha256sum "hyprcrt-$hdr.so" > SHA256SUMS && echo "$ver  hyprcrt-$hdr.so" > VERSIONS)
+lists "$sb/release" "$ver"
 cp "$lib" "$sb/badrelease/hyprcrt-$hdr.so" && printf 'garbage' >> "$sb/badrelease/hyprcrt-$hdr.so"
-cp "$sb/release/SHA256SUMS" "$sb/release/VERSIONS" "$sb/badrelease/"
+cp "$sb/release/SHA256SUMS" "$sb/release/SHA256SUMS.sig" "$sb/release/VERSIONS" "$sb/release/VERSIONS.sig" "$sb/badrelease/"
 fails=0
 ok()  { echo "  ok   $*"; }
 bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
-run() { local rel=$1; shift; env -i PATH="$PATH" HOME="$h" XDG_RUNTIME_DIR="$sb/run" HYPRCRT_RELEASE_URL="file://$sb/$rel" "$@"; }
+run() { local rel=$1; shift; env -i PATH="$PATH" HOME="$h" XDG_RUNTIME_DIR="$sb/run" HYPRCRT_RELEASE_URL="file://$sb/$rel" HYPRCRT_RELEASE_KEY="$sb/release-key.pub" "$@"; }
 
 # a checkout: the tracked files as the working tree has them, so the test sees uncommitted changes
 src=$h/.local/share/hyprcrt-src
@@ -86,7 +92,7 @@ fi
 new=$ver.99
 sed -i "s/\"version\": *\"$ver\"/\"version\": \"$new\"/" "$src/manifest.json"
 printf 'newer' >> "$sb/release/hyprcrt-$hdr.so"
-(cd "$sb/release" && sha256sum "hyprcrt-$hdr.so" > SHA256SUMS && echo "$new  hyprcrt-$hdr.so" > VERSIONS)
+lists "$sb/release" "$new"
 st=$(run release "$h/.local/bin/hyprcrt" plugin status 2>&1 || true)
 [[ $st == *"stale: the sources are hyprcrt $new"* ]] && ok "hyprcrt plugin status names the library stale against sources of $new" || bad "plugin status after a source update: $st"
 if out=$(run release "$src/tools/crt-build" --no-load --no-autostart --source "$src" 2>&1) && [[ $out != *"building hyprcrt"* ]] && cmp -s "$data/hyprcrt-$hdr.so" "$sb/release/hyprcrt-$hdr.so" && [ "$(cat "$data/built-version")" = "$new" ]; then
@@ -96,7 +102,7 @@ else
 fi
 # and when the release has no library of the sources' version (or does not say which), the prebuilt is refused
 # so crt-build compiles the sources rather than install a library of another version
-(cd "$sb/release" && echo "$ver  hyprcrt-$hdr.so" > VERSIONS)
+lists "$sb/release" "$ver"
 if out=$(run release "$src/tools/crt-fetch" --want "$new" 2>&1); then
     bad "crt-fetch --want $new installed a prebuilt of $ver"
 elif [ $? = 3 ] || [[ $out == *"is hyprcrt $ver, the sources are $new"* ]]; then
@@ -104,7 +110,7 @@ elif [ $? = 3 ] || [[ $out == *"is hyprcrt $ver, the sources are $new"* ]]; then
 else
     bad "crt-fetch --want $new: $out"
 fi
-rm -f "$sb/release/VERSIONS"
+rm -f "$sb/release/VERSIONS" "$sb/release/VERSIONS.sig"
 if out=$(run release "$src/tools/crt-fetch" --want "$new" 2>&1); then
     bad "crt-fetch --want $new installed a prebuilt whose version the release does not state"
 elif [[ $out == *"of an unstated version, the sources are $new"* ]]; then
@@ -112,7 +118,25 @@ elif [[ $out == *"of an unstated version, the sources are $new"* ]]; then
 else
     bad "crt-fetch --want $new with no VERSIONS: $out"
 fi
-(cd "$sb/release" && echo "$ver  hyprcrt-$hdr.so" > VERSIONS)
+lists "$sb/release" "$ver"
+# a release whose lists are unsigned, or signed by another key, is not trusted at all
+rm -f "$sb/release/SHA256SUMS.sig"
+if out=$(run release "$src/tools/crt-fetch" --want "$ver" 2>&1); then
+    bad "crt-fetch installed from a release whose SHA256SUMS is unsigned"
+elif [[ $out == *"no SHA256SUMS signature"* ]]; then
+    ok "a release with an unsigned SHA256SUMS is refused (exit 3, so crt-build compiles)"
+else
+    bad "crt-fetch against an unsigned release: $out"
+fi
+sign "$sb/release" "$sb/other.pem"
+if out=$(run release "$src/tools/crt-fetch" --want "$ver" 2>&1); then
+    bad "crt-fetch installed from a release signed by another key"
+elif [[ $out == *"no SHA256SUMS signature"* ]]; then
+    ok "a release signed by another key is refused as well"
+else
+    bad "crt-fetch against a release signed by another key: $out"
+fi
+sign "$sb/release"
 sed -i "s/\"version\": *\"$new\"/\"version\": \"$ver\"/" "$src/manifest.json"
 
 # the post-update hook runs unattended, so it executes nothing from the checkout and nothing found on the PATH, takes
@@ -123,12 +147,14 @@ co=$h/.config/omarchy/plugins/danexpo.crt
 mkdir -p "$co/tools" "$sb/shadow"
 sed "s/\"version\": *\"$ver\"/\"version\": \"$new\"/" "$src/manifest.json" > "$co/manifest.json"
 printf '#!/bin/sh\necho crt-build >> "%s/checkout.calls"\n' "$sb" > "$co/tools/crt-build" && chmod +x "$co/tools/crt-build"
-for t in sha256sum curl wget mv ln stat mkdir chmod rm cat sed grep; do printf '#!/bin/sh\necho %s >> "%s/shadow.calls"\nexit 1\n' "$t" "$sb" > "$sb/shadow/$t"; chmod +x "$sb/shadow/$t"; done
+for t in sha256sum curl wget head openssl mv ln stat mkdir chmod rm cat sed grep; do printf '#!/bin/sh\necho %s >> "%s/shadow.calls"\nexit 1\n' "$t" "$sb" > "$sb/shadow/$t"; chmod +x "$sb/shadow/$t"; done
 printf 'newest' >> "$sb/release/hyprcrt-$hdr.so"
-(cd "$sb/release" && sha256sum "hyprcrt-$hdr.so" > SHA256SUMS && echo "$new  hyprcrt-$hdr.so" > VERSIONS)
-cp "$sb/release/SHA256SUMS" "$sb/badrelease/"; (cd "$sb/badrelease" && echo "$new  hyprcrt-$hdr.so" > VERSIONS)
+lists "$sb/release" "$new"
+cp "$sb/release/SHA256SUMS" "$sb/release/SHA256SUMS.sig" "$sb/badrelease/"; (cd "$sb/badrelease" && echo "$new  hyprcrt-$hdr.so" > VERSIONS) && sign "$sb/badrelease"
 echo canary > "$sb/canary"; ln -sfn "$sb/canary" "$data/built-version"
-hook() { env -i PATH="$sb/shadow:$PATH" HOME=/nonexistent XDG_DATA_HOME=/nonexistent bash "$src/omarchy-plugin/hooks/hyprcrt-rebuild" --home "$h" "$@" </dev/null; }
+hook() { env -i PATH="$sb/shadow:$PATH" HOME=/nonexistent XDG_DATA_HOME=/nonexistent bash "$src/omarchy-plugin/hooks/hyprcrt-rebuild" --home "$h" --key "$sb/release-key.pub" "$@" </dev/null; }
+inline=$(sed -n "/^release_key='/,/^-----END PUBLIC KEY-----'/p" "$src/omarchy-plugin/hooks/hyprcrt-rebuild" | sed "s/^release_key='//; s/'\$//")
+[ "$inline" = "$(cat "$src/release-key.pub")" ] && ok "the key inline in the hook is release-key.pub" || bad "the hook's inline key differs from release-key.pub"
 ino=$(stat -c %i "$data/hyprcrt-$hdr.so")
 if out=$(hook --release "file://$sb/badrelease" 2>&1) && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ] && [ -L "$data/built-version" ]; then
     ok "the hook refuses a prebuilt whose checksum does not match and changes nothing"
@@ -141,7 +167,36 @@ if out=$(hook --release "file://$sb/release" 2>&1) && [ "$(stat -c %i "$data/hyp
 else
     bad "the hook against a release of $ver for sources of $new: $out; $(ls -l "$data" | tr '\n' ' ')"
 fi
-(cd "$sb/release" && echo "$new  hyprcrt-$hdr.so" > VERSIONS)
+lists "$sb/release" "$new"
+# the lists unsigned, signed by another key, or the library over the byte ceiling: nothing is installed
+rm -f "$sb/release/SHA256SUMS.sig"
+if out=$(hook --release "file://$sb/release" 2>&1) && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ] && [ -L "$data/built-version" ]; then
+    ok "the hook against a release whose SHA256SUMS is unsigned changes nothing"
+else
+    bad "the hook against an unsigned release: $out; $(ls -l "$data" | tr '\n' ' ')"
+fi
+sign "$sb/release" "$sb/other.pem"
+if out=$(hook --release "file://$sb/release" 2>&1) && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ] && [ -L "$data/built-version" ]; then
+    ok "the hook against a release signed by another key changes nothing"
+else
+    bad "the hook against a release signed by another key: $out; $(ls -l "$data" | tr '\n' ' ')"
+fi
+sign "$sb/release"
+mkdir -p "$sb/bigrelease" && truncate -s 33554433 "$sb/bigrelease/hyprcrt-$hdr.so" && lists "$sb/bigrelease" "$new"   # one byte over 32 MiB, correctly listed and signed
+if out=$(hook --release "file://$sb/bigrelease" 2>&1) && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ] && [ -L "$data/built-version" ] \
+    && [ -z "$(find "$data" -maxdepth 1 -name '.post-update.*')" ]; then
+    ok "the hook refuses a library over the byte ceiling, correctly listed and signed, and leaves no temporary directory"
+else
+    bad "the hook against an oversized library: $out; $(ls -la "$data" | tr '\n' ' ')"
+fi
+rm -rf "$sb/bigrelease"
+chmod 0722 "$data"
+if out=$(hook --release "file://$sb/release" 2>&1) && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ] && [ -L "$data/built-version" ]; then
+    ok "a state directory with mode 0722 (a write bit for others) makes the hook do nothing"
+else
+    bad "the hook with the state directory at 0722: $out; $(ls -ld "$data")"
+fi
+chmod 0755 "$data"
 chmod g+w "$data"
 if out=$(hook --release "file://$sb/release" 2>&1) && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ] && [ -L "$data/built-version" ]; then
     ok "the hook does nothing while others can write its state directory"
@@ -165,7 +220,7 @@ else
     bad "the hook a second time: $out"
 fi
 rm -rf "$co" "$sb/shadow"
-(cd "$sb/release" && echo "$ver  hyprcrt-$hdr.so" > VERSIONS)
+lists "$sb/release" "$ver"
 
 # a download that does not match SHA256SUMS never becomes the installed library
 rm -rf "$data"

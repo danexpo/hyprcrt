@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.4 (2026-09-12)
+
+### Changed
+- Releases are signed: the CI signs `SHA256SUMS` and `VERSIONS` with the project's Ed25519 release key
+  (`SHA256SUMS.sig`, `VERSIONS.sig`), and `release-key.pub` in the tree is the public half. The post-update hook
+  carries that key inline and installs a library only when its checksum is in a `SHA256SUMS` the key signed;
+  `crt-fetch` checks the same signatures against `release-key.pub` (`HYPRCRT_RELEASE_KEY` overrides it, the tests
+  sign with a key of their own). An unsigned release, or one signed by another key, installs nothing.
+- Every download has a byte ceiling (64 KiB for the lists, 4 KiB for a signature, 32 MiB for the library): at most
+  that much lands on disk, and more is refused before any verification.
+- The hook tests its state directory's write bits arithmetically (`mode & 022`), after opening it, on the
+  descriptor (owner and type as well); state files are opened first and then checked on their own descriptor to be
+  regular files of the user's. It uses `curl` only (a dependency of pacman, like `openssl`), no longer `wget`.
+- `hyprcrt install` copies `release-key.pub` next to the tools it installs.
+
 ## 0.2.3 (2026-09-12)
 
 ### Changed

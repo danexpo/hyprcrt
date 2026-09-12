@@ -46,7 +46,7 @@ extern "C" {
 #include "Chain.hpp"
 #include "Look.hpp"
 
-#define HYPRCRT_VERSION "0.2.3"
+#define HYPRCRT_VERSION "0.2.4"
 
 inline HANDLE PHANDLE = nullptr;
 
