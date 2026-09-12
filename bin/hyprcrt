@@ -368,7 +368,12 @@ power() {
 plugin_cmd() {
     case "${1:-status}" in
         status)
-            printf 'built: %s\n' "$([ -f "$so" ] && echo "yes ($so, for Hyprland $(cut -c1-12 "$data/built-for" 2>/dev/null || echo '?'))" || echo no)"
+            printf 'built: %s\n' "$([ -f "$so" ] && echo "yes ($so, for Hyprland $(cut -c1-12 "$data/built-for" 2>/dev/null || echo '?'), hyprcrt $(cat "$data/built-version" 2>/dev/null || echo '?'))" || echo no)"
+            # the library must be of the version the sources at hand are, or `omarchy plugin update` left it behind
+            local srcver havever
+            srcver=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$root/manifest.json" 2>/dev/null | head -n1)
+            havever=$(cat "$data/built-version" 2>/dev/null || true)
+            [ ! -f "$so" ] || [ -z "$srcver" ] || [ "$havever" = "$srcver" ] || printf 'stale: the sources are hyprcrt %s; run: hyprcrt build\n' "$srcver"
             printf 'loaded: %s\n' "$(plugin_loaded && echo yes || echo no)"
             printf 'disabled: %s\n' "$(disabled_reason || true)"
             [ -f "$loaded_marker" ] && printf 'loaded marker: pid %s\n' "$(head -n1 "$loaded_marker")" || true ;;

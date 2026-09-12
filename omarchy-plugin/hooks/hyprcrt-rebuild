@@ -1,8 +1,10 @@
 #!/bin/bash
 # hyprcrt post-update hook for Omarchy (~/.config/omarchy/hooks/post-update.d/hyprcrt-rebuild).
-# After `omarchy update` finishes, rebuild the CRT plugin when Hyprland changed underneath it.
+# After `omarchy update` finishes, refresh the CRT plugin when Hyprland changed underneath it, or when the
+# plugin sources (the Omarchy plugin checkout) are a newer hyprcrt than the installed library was built from.
 # A plugin only loads into the exact Hyprland commit it was built for, so without this the full mode
-# silently stops after the next Hyprland update and the filter falls back to lite mode.
+# silently stops after the next Hyprland update and the filter falls back to lite mode; and a library of
+# the old version would keep running under the updated panel and CLI.
 #
 # Installed by: omarchy hook install post-update <this file>   (hyprcrt install does it for you)
 set -u
@@ -11,20 +13,23 @@ built=$(cat "$data/built-for" 2>/dev/null || true)
 hdr=$(grep -m1 GIT_COMMIT_HASH /usr/include/hyprland/src/version.h 2>/dev/null | cut -d'"' -f2 || true)
 [ -n "$hdr" ] || exit 0                 # no headers, nothing to do
 [ -f "$data/hyprcrt.so" ] || exit 0     # full mode was never built: stay in lite mode
-[ "$built" = "$hdr" ] && exit 0         # still matching
 
 src=""
 for c in "$HOME/.config/omarchy/plugins/danexpo.crt" "$HOME/.config/omarchy/plugins/hyprcrt" "$data/src"; do
     [ -d "$c/plugin/src" ] && src=$c && break
 done
+srcver=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$src/manifest.json" 2>/dev/null | head -n1)
+have=$(cat "$data/built-version" 2>/dev/null || true)
+[ "$built" = "$hdr" ] && { [ -z "$src" ] || [ "$have" = "$srcver" ]; } && exit 0   # still matching
 if [ -z "$src" ]; then
     echo "hyprcrt: Hyprland changed to ${hdr:0:8} but the plugin sources were not found; run: hyprcrt build --source <repo>" >&2
     exit 0
 fi
 
-# The running compositor is still the old one; build for the new headers without loading.
+# The running compositor is still the old one (or still runs the old library); fetch or build without loading.
 if "$src/tools/crt-build" --no-load --source "$src"; then
-    command -v omarchy-notification-send >/dev/null && omarchy-notification-send -u low "CRT filter rebuilt for the new Hyprland; it loads after the next restart" || true
+    [ "$built" = "$hdr" ] && what="updated to hyprcrt $srcver" || what="rebuilt for the new Hyprland"
+    command -v omarchy-notification-send >/dev/null && omarchy-notification-send -u low "CRT filter $what; it loads after the next restart (or now: hyprcrt plugin unload && hyprcrt plugin load)" || true
 else
     command -v omarchy-notification-send >/dev/null && omarchy-notification-send -u critical "CRT filter: rebuild failed, running in lite mode (see hyprcrt build)" || true
     rm -f "$data/hyprcrt.so"   # do not let Hyprland try to load a stale .so at start

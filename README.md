@@ -75,6 +75,13 @@ omarchy hook install post-update ~/.config/omarchy/plugins/danexpo.crt/omarchy-p
 If you update with pacman directly, `omarchy-plugin/hooks/hyprcrt-rebuild.hook` (copied to
 `/etc/pacman.d/hooks/`) marks the plugin stale and the shell tells you to run `hyprcrt build`.
 
+### After `omarchy plugin update`
+
+The checkout moves on to the new version, the installed library does not. The shell service (and the hook
+above, at the next `omarchy update`) notices and fetches the prebuilt of the new version, or builds it, and
+tells you; it loads after the next restart, or now with `hyprcrt plugin unload && hyprcrt plugin load`.
+Without the service, `hyprcrt plugin status` says `stale` and `hyprcrt build` does the same.
+
 ### If Hyprland ever crashes with the plugin loaded
 
 The plugin records the compositor's pid while it is loaded. If Hyprland leaves a crash report for
@@ -120,7 +127,7 @@ hyprcrt gen television gain=1.2 # print the lite-mode shader for a preset plus k
 hyprcrt reload                 # recompile the shaders: full mode's passes from disk, lite's from state.conf
 hyprcrt menu                   # add Style > CRT filter to the Omarchy menu (install does it for you)
 hyprcrt install --no-load       # shaders, presets, tools and the loader, then the plugin (see Install)
-hyprcrt build --no-load         # only the plugin again, e.g. after a Hyprland update (--build forces a compile)
+hyprcrt build --no-load         # only the plugin again, e.g. after a Hyprland or plugin update (--build forces a compile)
 hyprcrt uninstall              # unload, clear the shader, remove every file hyprcrt wrote (see below)
 hyprcrt dump /tmp/frame.ppm    # the next filtered frame, exactly as sent to the display (full mode, one at a time)
 ```

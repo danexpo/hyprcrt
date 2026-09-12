@@ -6,9 +6,11 @@
 # A Hyprland plugin only loads into the exact Hyprland commit it was compiled against, so this script
 # 1. reads the commit the installed headers describe (/usr/include/hyprland/src/version.h),
 # 2. refuses to build if that differs from the running compositor (a pending restart after an update),
-# 3. installs a prebuilt hyprcrt-<hash>.so from the project's releases when one exists (crt-fetch),
-#    otherwise builds plugin/ with make (--build skips the download and always compiles),
-#    and installs it as ~/.local/share/hyprcrt/hyprcrt-<hash>.so,
+# 3. when the installed library is not for that commit, or not from this hyprcrt version (built-for and
+#    built-version beside it, against the version manifest.json carries), installs a prebuilt
+#    hyprcrt-<hash>.so of this version from the project's releases when one exists (crt-fetch), otherwise
+#    builds plugin/ with make (--build skips the download and always compiles), and installs it as
+#    ~/.local/share/hyprcrt/hyprcrt-<hash>.so,
 # 4. installs lua/loader.lua and, on Omarchy, the toggle file that sources it on every start
 #    (or prints the line to add to a Hyprland config without Omarchy), and
 # 5. loads it into the running session unless --no-load (scripts should always pass --no-load).
@@ -55,26 +57,31 @@ if [ -n "$running" ] && [ "$running" != "$hdr" ]; then
     die "the installed headers are for Hyprland $hdr but the running compositor is $running. Restart Hyprland (log out and in) so both match, then run crt-build again."
 fi
 
+# the version these sources are: the installed library must be of it as well as for the installed Hyprland, or an
+# `omarchy plugin update` would leave the old library running under the new panel and CLI for good
+srcver=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$root/manifest.json" 2>/dev/null | head -n1)
+[ -n "$srcver" ] || die "cannot read the version from $root/manifest.json (use --source <repo>)"
+
 mkdir -p "$data"
 got=0
-if [ "$forcebuild" = 0 ] && [ "$(cat "$data/built-for" 2>/dev/null)" != "$hdr" ]; then
-    # a prebuilt library for this exact Hyprland saves the toolchain and the minute of compiling
-    if "$here/crt-fetch"; then
+if [ "$forcebuild" = 0 ]; then
+    if [ -e "$data/hyprcrt.so" ] && [ "$(cat "$data/built-for" 2>/dev/null)" = "$hdr" ] && [ "$(cat "$data/built-version" 2>/dev/null)" = "$srcver" ]; then
+        echo "crt-build: $data/hyprcrt.so is already hyprcrt $srcver for Hyprland ${hdr:0:12} (use --build to recompile)"
+        got=1
+    # a prebuilt library of this version for this exact Hyprland saves the toolchain and the minute of compiling
+    elif "$here/crt-fetch" --want "$srcver"; then
         got=1
     else
         rc=$?
         [ "$rc" = 3 ] || echo "crt-build: prebuilt download failed, building locally" >&2
     fi
-elif [ "$forcebuild" = 0 ] && [ -e "$data/hyprcrt.so" ]; then
-    echo "crt-build: $data/hyprcrt.so already matches Hyprland ${hdr:0:12} (use --build to recompile)"
-    got=1
 fi
 
 if [ "$got" = 0 ]; then
     [ -d "$root/plugin/src" ] || die "plugin sources not found under $root (use --source <repo>)"
     for t in g++ make pkg-config; do command -v "$t" >/dev/null || die "$t is required (pacman -S base-devel)"; done
     pkg-config --exists hyprland || die "Hyprland headers not found (pkg-config hyprland). On Arch they ship with the hyprland package."
-    echo "crt-build: building for Hyprland ${hdr:0:12}"
+    echo "crt-build: building hyprcrt $srcver for Hyprland ${hdr:0:12}"
     make -C "$root/plugin" clean >/dev/null
     make -C "$root/plugin" all -j"$(nproc)" OPT="-O2"
 
@@ -88,6 +95,7 @@ if [ "$got" = 0 ]; then
     mv -f "$tmp" "$data/hyprcrt-$hdr.so"
     ln -sfn "hyprcrt-$hdr.so" "$data/hyprcrt.so.new" && mv -Tf "$data/hyprcrt.so.new" "$data/hyprcrt.so"
     echo "$hdr" > "$data/built-for"
+    echo "$srcver" > "$data/built-version"
     # keep the two most recent builds only (unlinking a mapped file is safe; only overwriting it is not)
     ls -t "$data"/hyprcrt-*.so 2>/dev/null | tail -n +3 | xargs -r rm -f
 fi

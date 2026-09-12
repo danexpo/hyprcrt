@@ -1,14 +1,18 @@
 #!/bin/bash
 # crt-fetch - install a prebuilt hyprcrt plugin for the Hyprland that is installed, without compiling.
 #
-#   crt-fetch [--check] [--quiet]
+#   crt-fetch [--check] [--quiet] [--want <version>]
 #
-# The CI publishes hyprcrt-<hyprland commit>.so plus a SHA256SUMS file to a rolling "prebuilt" GitHub
-# release (and to every tagged release). This script reads the commit the installed Hyprland headers
+# The CI publishes hyprcrt-<hyprland commit>.so plus SHA256SUMS and VERSIONS files to a rolling "prebuilt"
+# GitHub release (and to every tagged release). This script reads the commit the installed Hyprland headers
 # describe, downloads the matching library and its checksum line, verifies the checksum, and installs
 # it atomically as ~/.local/share/hyprcrt/hyprcrt-<hash>.so (never overwriting a file the running
-# compositor may have mapped). Exit 0 on success, 3 when no prebuilt exists for this Hyprland (build
-# locally with crt-build), 1 on any other error. --check only reports whether one exists.
+# compositor may have mapped), recording the Hyprland commit in built-for and the hyprcrt version the
+# library was built from (its VERSIONS line) in built-version. Exit 0 on success, 3 when no prebuilt
+# exists for this Hyprland (build locally with crt-build), 1 on any other error. --check only reports
+# whether one exists. --want <version> takes the prebuilt only when it is that hyprcrt version (the one
+# the sources at hand carry): a library of another version, or one whose version the release does not
+# state, is left alone (exit 3), so crt-build compiles the sources instead.
 # MIT (c) 2026 Dan Expo
 set -euo pipefail
 
@@ -17,11 +21,12 @@ set -euo pipefail
 repo=${HYPRCRT_REPO:-danexpo/hyprcrt}
 base=${HYPRCRT_RELEASE_URL:-https://github.com/$repo/releases/download/prebuilt}
 data=${XDG_DATA_HOME:-$HOME/.local/share}/hyprcrt
-check=0 quiet=0
+check=0 quiet=0 want=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --check) check=1 ;;
         --quiet) quiet=1 ;;
+        --want) want=$2; shift ;;
         -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
         *) echo "crt-fetch: unknown option $1" >&2; exit 1 ;;
     esac
@@ -58,8 +63,18 @@ if [ -z "$line" ]; then
     say "no prebuilt plugin for Hyprland ${hdr:0:12} (build one with crt-build)"
     exit 3
 fi
+# which hyprcrt the library was built from: the rolling release keeps one library per Hyprland commit, each from
+# whatever hyprcrt was current when it was built, so the version is per line, not per release
+ver=""
+if fetch "$base/VERSIONS" "$tmp/VERSIONS" 2>/dev/null; then
+    ver=$(sed -n "s/^\([^ ]*\)  hyprcrt-$hdr\.so\$/\1/p" "$tmp/VERSIONS" | head -n1)
+fi
+if [ -n "$want" ] && [ "$ver" != "$want" ]; then
+    say "the prebuilt plugin for Hyprland ${hdr:0:12} is hyprcrt ${ver:-of an unstated version}, the sources are $want (build one with crt-build)"
+    exit 3
+fi
 if [ "$check" = 1 ]; then
-    say "a prebuilt plugin exists for Hyprland ${hdr:0:12}"
+    say "a prebuilt plugin exists for Hyprland ${hdr:0:12}${ver:+ (hyprcrt $ver)}"
     exit 0
 fi
 
@@ -74,5 +89,6 @@ chmod 755 "$out"
 mv -f "$out" "$data/hyprcrt-$hdr.so"          # rename: a mapped older inode stays valid
 ln -sfn "hyprcrt-$hdr.so" "$data/hyprcrt.so.new" && mv -Tf "$data/hyprcrt.so.new" "$data/hyprcrt.so"
 echo "$hdr" > "$data/built-for"
+echo "${ver:-unknown}" > "$data/built-version"
 ls -t "$data"/hyprcrt-*.so 2>/dev/null | tail -n +3 | xargs -r rm -f
-say "installed $data/hyprcrt.so for Hyprland ${hdr:0:12}"
+say "installed $data/hyprcrt.so (hyprcrt ${ver:-of an unstated version}) for Hyprland ${hdr:0:12}"

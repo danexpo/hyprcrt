@@ -4,8 +4,9 @@ name: build
 # result so users do not need a compiler:
 #   - every run uploads hyprcrt-<hyprland commit>.so as a workflow artifact
 #   - pushes to main, the weekly run and manual runs add it to the rolling "prebuilt" release
-#     (tools/crt-fetch reads that release)
-#   - a v* tag creates a proper release with the same asset and checksum file
+#     (tools/crt-fetch reads that release), with its checksum in SHA256SUMS and the hyprcrt version it
+#     was built from (manifest.json) in VERSIONS, one line per library
+#   - a v* tag creates a proper release with the same asset, checksum and version files
 on:
   push:
     branches: [main]
@@ -26,7 +27,7 @@ jobs:
     steps:
       - name: Install toolchain and Hyprland headers
         run: |
-          pacman -Syu --noconfirm --needed base-devel git pkgconf hyprland lua mesa github-cli python wget # the install test's hung-network cases
+          pacman -Syu --noconfirm --needed base-devel git pkgconf hyprland lua mesa github-cli jq python wget # the install test's hung-network cases
       - uses: actions/checkout@v4
       - name: Build
         run: make -C plugin all -j"$(nproc)" OPT="-O2"
@@ -39,6 +40,9 @@ jobs:
           mkdir -p dist
           cp plugin/out/hyprcrt.so "dist/hyprcrt-$commit.so"
           (cd dist && sha256sum "hyprcrt-$commit.so" > "hyprcrt-$commit.so.sha256")
+          version=$(jq -r .version manifest.json)
+          echo "$version  hyprcrt-$commit.so" > "dist/hyprcrt-$commit.so.version"
+          echo "hyprcrt version: $version"
       - name: The README's install on a clean HOME takes this library as a verified prebuilt
         run: tests/run-install-test.sh plugin/out/hyprcrt.so
       - uses: actions/upload-artifact@v4
@@ -46,7 +50,7 @@ jobs:
           name: hyprcrt-plugin-so
           path: dist/
 
-      # rolling "prebuilt" release: one asset per Hyprland commit, plus a merged SHA256SUMS
+      # rolling "prebuilt" release: one asset per Hyprland commit, plus a merged SHA256SUMS and VERSIONS
       - name: Publish to the rolling prebuilt release
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
@@ -58,14 +62,17 @@ jobs:
             gh release create prebuilt --title "Prebuilt plugin" --latest=false \
               --notes "Rolling release. Each hyprcrt-<commit>.so is built against the Hyprland commit in its name. hyprcrt install (tools/crt-fetch) picks the one matching your Hyprland and verifies it against SHA256SUMS."
           fi
-          gh release download prebuilt --pattern SHA256SUMS --dir dist --clobber || true
-          touch dist/SHA256SUMS
-          grep -v " hyprcrt-$commit.so$" dist/SHA256SUMS > dist/SHA256SUMS.new || true
-          cat "dist/hyprcrt-$commit.so.sha256" >> dist/SHA256SUMS.new
-          sort -k2 dist/SHA256SUMS.new > dist/SHA256SUMS
-          gh release upload prebuilt "dist/hyprcrt-$commit.so" dist/SHA256SUMS --clobber
+          for f in SHA256SUMS:sha256 VERSIONS:version; do
+            list=${f%%:*} ext=${f##*:}
+            gh release download prebuilt --pattern "$list" --dir dist --clobber || true
+            touch "dist/$list"
+            grep -v " hyprcrt-$commit.so$" "dist/$list" > "dist/$list.new" || true
+            cat "dist/hyprcrt-$commit.so.$ext" >> "dist/$list.new"
+            sort -k2 "dist/$list.new" > "dist/$list"
+          done
+          gh release upload prebuilt "dist/hyprcrt-$commit.so" dist/SHA256SUMS dist/VERSIONS --clobber
 
-      # tagged release: the same asset and checksum file attached to the tag
+      # tagged release: the same asset, checksum and version files attached to the tag
       - name: Publish the tagged release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -74,9 +81,10 @@ jobs:
           git config --global --add safe.directory "$PWD"
           commit=${{ steps.hash.outputs.commit }}
           cp "dist/hyprcrt-$commit.so.sha256" dist/SHA256SUMS
-          gh release create "$GITHUB_REF_NAME" "dist/hyprcrt-$commit.so" dist/SHA256SUMS \
+          cp "dist/hyprcrt-$commit.so.version" dist/VERSIONS
+          gh release create "$GITHUB_REF_NAME" "dist/hyprcrt-$commit.so" dist/SHA256SUMS dist/VERSIONS \
             --title "hyprcrt $GITHUB_REF_NAME" --generate-notes || \
-          gh release upload "$GITHUB_REF_NAME" "dist/hyprcrt-$commit.so" dist/SHA256SUMS --clobber
+          gh release upload "$GITHUB_REF_NAME" "dist/hyprcrt-$commit.so" dist/SHA256SUMS dist/VERSIONS --clobber
 
   shaders:
     name: Shaders compile

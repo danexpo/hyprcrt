@@ -4,7 +4,9 @@
 # A local directory stands in for the GitHub "prebuilt" release: SHA256SUMS plus the library, named after the commit
 # the installed Hyprland headers carry. So the prebuilt path runs end to end offline: crt-fetch --check finds that
 # commit, the download is verified, nothing compiles, and the files the README promises are where it says, inside a
-# time a person would wait. A release whose checksum does not match must be refused, and a network that hangs rather than
+# time a person would wait. A second run against the same sources leaves the library alone; sources of a newer
+# hyprcrt (an `omarchy plugin update`) take the prebuilt of that version, and a release that has none of that
+# version is left alone so crt-build compiles. A release whose checksum does not match must be refused, and a network that hangs rather than
 # refuses must be given up on within half a minute (loopback listeners that never answer). The real release URL is not
 # reached (that half waits on the GitHub remote). Nothing touches the live session: `env -i`, no instance signature.
 # MIT (c) 2026 Dan Expo.
@@ -21,10 +23,12 @@ sb=$(mktemp -d "${TMPDIR:-/tmp}/hyprcrt-install.XXXXXX")
 trap 'rm -rf "$sb"' EXIT
 h=$sb/home
 mkdir -p "$h" "$sb/run" "$sb/release" "$sb/badrelease"
+ver=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$root/manifest.json" | head -n1)
+[ -n "$ver" ] || { echo "install: no version in manifest.json"; exit 1; }
 cp "$lib" "$sb/release/hyprcrt-$hdr.so"
-(cd "$sb/release" && sha256sum "hyprcrt-$hdr.so" > SHA256SUMS)
+(cd "$sb/release" && sha256sum "hyprcrt-$hdr.so" > SHA256SUMS && echo "$ver  hyprcrt-$hdr.so" > VERSIONS)
 cp "$lib" "$sb/badrelease/hyprcrt-$hdr.so" && printf 'garbage' >> "$sb/badrelease/hyprcrt-$hdr.so"
-cp "$sb/release/SHA256SUMS" "$sb/badrelease/"
+cp "$sb/release/SHA256SUMS" "$sb/release/VERSIONS" "$sb/badrelease/"
 fails=0
 ok()  { echo "  ok   $*"; }
 bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
@@ -39,8 +43,8 @@ else
     cp -a "$root/." "$src/" && rm -rf "$src/tests/out" "$src/plugin/out"
 fi
 
-if out=$(run release "$src/tools/crt-fetch" --check 2>&1) && [[ $out == *"exists for Hyprland ${hdr:0:12}"* ]]; then
-    ok "crt-fetch --check found a prebuilt for the installed commit ${hdr:0:12}"
+if out=$(run release "$src/tools/crt-fetch" --check --want "$ver" 2>&1) && [[ $out == *"exists for Hyprland ${hdr:0:12} (hyprcrt $ver)"* ]]; then
+    ok "crt-fetch --check found a prebuilt of hyprcrt $ver for the installed commit ${hdr:0:12}"
 else
     bad "crt-fetch --check: $out"
 fi
@@ -55,8 +59,8 @@ fi
 data=$h/.local/share/hyprcrt
 [[ $log != *"building for Hyprland"* ]] && [ ! -d "$src/plugin/out" ] && ok "nothing was compiled" || bad "install compiled the plugin instead of taking the prebuilt"
 [ "$(readlink "$h/.local/bin/hyprcrt")" = "$src/bin/hyprcrt" ] && ok "the hyprcrt link in .local/bin points at the clone" || bad ".local/bin/hyprcrt: $(readlink "$h/.local/bin/hyprcrt" || echo missing)"
-if [ "$(readlink "$data/hyprcrt.so")" = "hyprcrt-$hdr.so" ] && cmp -s "$data/hyprcrt-$hdr.so" "$lib" && [ "$(cat "$data/built-for")" = "$hdr" ]; then
-    ok "hyprcrt.so -> hyprcrt-${hdr:0:12}….so, the verified library, built-for the installed commit"
+if [ "$(readlink "$data/hyprcrt.so")" = "hyprcrt-$hdr.so" ] && cmp -s "$data/hyprcrt-$hdr.so" "$lib" && [ "$(cat "$data/built-for")" = "$hdr" ] && [ "$(cat "$data/built-version")" = "$ver" ]; then
+    ok "hyprcrt.so -> hyprcrt-${hdr:0:12}….so, the verified library, built-for the installed commit, built-version $ver"
 else
     bad "the installed plugin: $(ls -l "$data" 2>&1 | tr '\n' ' ')"
 fi
@@ -66,8 +70,50 @@ cmp -s "$data/loader.lua" "$src/lua/loader.lua" || missing="$missing loader.lua(
 [ -z "$missing" ] && ok "loader, shaders, presets and tools are in place" || bad "missing:$missing"
 [ ! -e "$h/.local/state/omarchy" ] && [ ! -e "$h/.config/omarchy" ] && ok "--no-autostart without Omarchy wrote nothing of Omarchy's" || bad "install wrote Omarchy files where there is no Omarchy"
 st=$(run release "$h/.local/bin/hyprcrt" plugin status 2>&1 || true)
-[[ $st == *"built: yes"*"for Hyprland ${hdr:0:12}"* && $st == *"loaded: no"* ]] && ok "hyprcrt plugin status: built for ${hdr:0:12}, not loaded" || bad "plugin status: $st"
+[[ $st == *"built: yes"*"for Hyprland ${hdr:0:12}, hyprcrt $ver"* && $st == *"loaded: no"* && $st != *stale* ]] && ok "hyprcrt plugin status: built for ${hdr:0:12}, hyprcrt $ver, not loaded, not stale" || bad "plugin status: $st"
 [ "$(run release "$h/.local/bin/hyprcrt" mode 2>&1)" = lite ] && ok "with no compositor running, mode is lite" || bad "mode is not lite before any Hyprland start"
+
+# the same sources again: the library is left alone (no download, no compile)
+ino=$(stat -c %i "$data/hyprcrt-$hdr.so")
+if out=$(run release "$src/tools/crt-build" --no-load --no-autostart --source "$src" 2>&1) && [[ $out == *"is already hyprcrt $ver for Hyprland ${hdr:0:12}"* ]] && [ "$(stat -c %i "$data/hyprcrt-$hdr.so")" = "$ino" ]; then
+    ok "crt-build again from the same sources leaves the installed library alone"
+else
+    bad "crt-build again: $out"
+fi
+
+# `omarchy plugin update` moved the sources on to a newer hyprcrt while the installed library stays the old one:
+# crt-build must take the prebuilt of the new version (the stand-in release now carries it), and say so
+new=$ver.99
+sed -i "s/\"version\": *\"$ver\"/\"version\": \"$new\"/" "$src/manifest.json"
+printf 'newer' >> "$sb/release/hyprcrt-$hdr.so"
+(cd "$sb/release" && sha256sum "hyprcrt-$hdr.so" > SHA256SUMS && echo "$new  hyprcrt-$hdr.so" > VERSIONS)
+st=$(run release "$h/.local/bin/hyprcrt" plugin status 2>&1 || true)
+[[ $st == *"stale: the sources are hyprcrt $new"* ]] && ok "hyprcrt plugin status names the library stale against sources of $new" || bad "plugin status after a source update: $st"
+if out=$(run release "$src/tools/crt-build" --no-load --no-autostart --source "$src" 2>&1) && [[ $out != *"building hyprcrt"* ]] && cmp -s "$data/hyprcrt-$hdr.so" "$sb/release/hyprcrt-$hdr.so" && [ "$(cat "$data/built-version")" = "$new" ]; then
+    ok "sources of $new over an installed $ver: crt-build took the prebuilt of $new, compiled nothing"
+else
+    bad "crt-build after a source update: $out; built-version $(cat "$data/built-version" 2>/dev/null)"
+fi
+# and when the release has no library of the sources' version (or does not say which), the prebuilt is refused
+# so crt-build compiles the sources rather than install a library of another version
+(cd "$sb/release" && echo "$ver  hyprcrt-$hdr.so" > VERSIONS)
+if out=$(run release "$src/tools/crt-fetch" --want "$new" 2>&1); then
+    bad "crt-fetch --want $new installed a prebuilt of $ver"
+elif [ $? = 3 ] || [[ $out == *"is hyprcrt $ver, the sources are $new"* ]]; then
+    ok "a prebuilt of another version is refused (exit 3, so crt-build compiles): $out"
+else
+    bad "crt-fetch --want $new: $out"
+fi
+rm -f "$sb/release/VERSIONS"
+if out=$(run release "$src/tools/crt-fetch" --want "$new" 2>&1); then
+    bad "crt-fetch --want $new installed a prebuilt whose version the release does not state"
+elif [[ $out == *"of an unstated version, the sources are $new"* ]]; then
+    ok "a prebuilt of unstated version is refused as well"
+else
+    bad "crt-fetch --want $new with no VERSIONS: $out"
+fi
+(cd "$sb/release" && echo "$ver  hyprcrt-$hdr.so" > VERSIONS)
+sed -i "s/\"version\": *\"$new\"/\"version\": \"$ver\"/" "$src/manifest.json"
 
 # a download that does not match SHA256SUMS never becomes the installed library
 rm -rf "$data"
@@ -138,4 +184,4 @@ time.sleep(float(sys.argv[2]))' "$mode" $((hang + 10)) > "$sb/$mode.port" &
 fi
 
 [ "$fails" -eq 0 ] || { echo "install: $fails failure(s)"; exit 1; }
-echo "install: the README's install on a clean HOME took the verified prebuilt for ${hdr:0:12}, compiled nothing, refused a bad checksum, and gave up on a hung network"
+echo "install: the README's install on a clean HOME took the verified prebuilt for ${hdr:0:12}, compiled nothing, took the prebuilt of a newer version after a source update and only that, refused a bad checksum, and gave up on a hung network"

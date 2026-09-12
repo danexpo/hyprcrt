@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Updating the plugin (`omarchy plugin update`) left the old library running under the new panel and CLI for
+  good: `tools/crt-build` judged the installed library by the Hyprland commit alone, so it said "already matches"
+  (or, with the library missing, compiled the checkout) and never took the new version. The library now records
+  the hyprcrt version it was built from (`built-version` beside `built-for`; CI publishes a `VERSIONS` file next to
+  `SHA256SUMS`), `crt-build` refreshes on a version mismatch as it does on a Hyprland change, `crt-fetch --want`
+  takes a prebuilt only of the sources' version and otherwise lets `crt-build` compile, the post-update hook no
+  longer exits early on a matching Hyprland when the version changed, the shell service fetches or builds the
+  new version at the next shell start (without loading it) and says so, and `hyprcrt plugin status` says `stale`
+  when the sources are newer than the library. `tests/run-install-test.sh` covers the second run, the update and
+  the refusals.
+
 ## 0.2.1 (2026-09-12)
 
 ### Fixed
