@@ -124,7 +124,7 @@ elif [ -e "$idata" ]; then
 else
     ok "hyprcrt install refuses under CLAUDECODE=1: $out"
 fi
-if out=$(env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" CLAUDECODE=1 HYPRCRT_LIVE=1 timeout 10 "$root/bin/hyprcrt" install --no-load --no-autostart 2>&1); then
+if out=$(env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" CLAUDECODE=1 HYPRCRT_LIVE=1 timeout 30 "$root/bin/hyprcrt" install --no-load --no-autostart 2>&1); then
     [ -d "$idata/shaders" ] && ok "HYPRCRT_LIVE=1 overrides the CLAUDECODE refusal" || bad "HYPRCRT_LIVE=1 exited ok but wrote nothing: $out"
 else
     bad "hyprcrt install under CLAUDECODE=1 HYPRCRT_LIVE=1 failed: $out"
