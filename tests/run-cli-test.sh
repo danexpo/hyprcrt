@@ -109,6 +109,32 @@ else
     echo "  skip render check (no /dev/dri/renderD128)"
 fi
 
+# install never writes the live HOME from inside an agent session (C11): CLAUDECODE set (as it is in
+# every agent's own shell) refuses and writes nothing; env -i (as every `run` above already does, and
+# as tests/run-install-test.sh does for real) clears it and installs normally.
+ih=$sb/install-home
+idata=$ih/.local/share/hyprcrt
+mkdir -p "$ih/run"
+if out=$(env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" CLAUDECODE=1 timeout 10 "$root/bin/hyprcrt" install --no-load --no-autostart 2>&1); then
+    bad "hyprcrt install ran under CLAUDECODE=1: $out"
+elif [[ $out != *"refusing to write the live"* ]]; then
+    bad "hyprcrt install under CLAUDECODE=1 said '$out', expected the live-install refusal"
+elif [ -e "$idata" ]; then
+    bad "hyprcrt install under CLAUDECODE=1 wrote $idata anyway"
+else
+    ok "hyprcrt install refuses under CLAUDECODE=1: $out"
+fi
+if out=$(env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" CLAUDECODE=1 HYPRCRT_LIVE=1 timeout 10 "$root/bin/hyprcrt" install --no-load --no-autostart 2>&1); then
+    [ -d "$idata/shaders" ] && ok "HYPRCRT_LIVE=1 overrides the CLAUDECODE refusal" || bad "HYPRCRT_LIVE=1 exited ok but wrote nothing: $out"
+else
+    bad "hyprcrt install under CLAUDECODE=1 HYPRCRT_LIVE=1 failed: $out"
+fi
+rm -rf "$ih"; mkdir -p "$ih/run"
+timeout 30 env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" "$root/bin/hyprcrt" install --no-load --no-autostart >/dev/null 2>&1
+[ -d "$idata/shaders" ] && [ -d "$idata/presets" ] && [ -f "$idata/loader.lua" ] && ok "hyprcrt install (env -i, no CLAUDECODE) installs into the sandbox" \
+    || bad "hyprcrt install (env -i, no CLAUDECODE) did not populate $idata"
+rm -rf "$ih"
+
 # uninstall leaves no trace of what install, the loader and both modes wrote, and keeps what is the user's
 h=$sb/home
 mkdir -p "$h/.local/state/omarchy/toggles/hypr" "$h/.config/omarchy/extensions" "$h/.config/omarchy/hooks/post-update.d" "$h/.local/bin"
