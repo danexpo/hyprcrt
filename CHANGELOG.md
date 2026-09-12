@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 (2026-09-12)
+
+### Fixed
+- Full mode flickered under a moving pointer: the mask pulsed on Monitor and the vignette twitched on Television. A
+  hardware cursor move (or shape change) makes Hyprland render a frame with no damage, in which it draws no scene
+  and keeps whatever its work buffer held, a frame this chain had already filtered; the plugin forced full damage on
+  it and filtered that frame a second time, one doubled frame per mouse move. Such a frame is now left alone
+  (no damage, no pass, nothing copied to the output). `crt status` counts them per monitor as `idle_frames`.
+
 ## 0.2.0 (2026-09-12)
 
 Broader-audience release: no build step for most people, a compositor that cannot be taken down twice,

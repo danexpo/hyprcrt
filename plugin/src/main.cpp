@@ -46,7 +46,7 @@ extern "C" {
 #include "Chain.hpp"
 #include "Look.hpp"
 
-#define HYPRCRT_VERSION "0.2.0"
+#define HYPRCRT_VERSION "0.2.1"
 
 inline HANDLE PHANDLE = nullptr;
 
@@ -68,6 +68,8 @@ struct SMonitorState {
     CCrtChain chain;
     bool      active        = false; // in scope this frame
     bool      selfScheduled = false; // we asked for the next frame (afterglow decay)
+    bool      idleFrame     = false; // this frame draws nothing: leave the buffer alone (see RENDER_BEGIN)
+    long      idleFrames    = 0;     // how many of those, for `crt status`
     int       glowFrames    = 0;
     int       pitch         = 1;
     SLook     look;
@@ -596,6 +598,7 @@ static void onRenderStage(eRenderStage stage) {
         auto&      st        = stateFor(m);
         const bool wasActive = st.active;
         st.active            = false;
+        st.idleFrame         = false;
         // screencopy / screen sharing never reach these stages, but on Hyprland 0.56 they copy the main buffer
         // after this chain has drawn into it, so an output capture is filtered (tests/run-capture-test.sh);
         // plugin:crt:capture stays reserved.
@@ -605,8 +608,20 @@ static void onRenderStage(eRenderStage stage) {
             return;
         st.active = true;
         st.pitch  = pitch;
+        // A frame with no damage draws no scene at all (renderMonitor renders the workspace only when its own
+        // finalDamage is non-empty), yet it still happens: a hardware cursor move or shape change makes aquamarine
+        // schedule one (needsFrame), and so does a client frame request with nothing to draw. The work buffer it
+        // begins on is not cleared either, so it holds a frame this chain has already filtered. Forcing full damage
+        // here would filter that frame a second time and copy it out: one doubled frame per mouse move, seen as the
+        // mask flickering and the vignette twitching under the pointer. Leave such a frame alone: no damage, no pass,
+        // and Hyprland copies nothing to the output.
         if (!wasActive)
             st.chain.resetGlow(); // whatever the trail held when this output left scope is stale now
+        st.idleFrame = rd.damage.empty();
+        if (st.idleFrame) {
+            st.idleFrames++;
+            return;
+        }
         SKnobs knobs  = effectiveKnobs();
         knobs.textsafe = knobs.textsafe && desktop; // text-safe is for the desktop, never for a fullscreen picture
         st.look        = computeLook(knobs, pitch);
@@ -624,7 +639,7 @@ static void onRenderStage(eRenderStage stage) {
         if (!m)
             return;
         auto& st = stateFor(m);
-        if (!st.active)
+        if (!st.active || st.idleFrame)
             return;
         g_pHyprRenderer->addPassElement(makeUnique<CCrtPassElement>(m));
         return;
@@ -635,6 +650,10 @@ static void onRenderStage(eRenderStage stage) {
         if (!m)
             return;
         auto& st = stateFor(m);
+        if (st.idleFrame) {
+            st.idleFrame = false; // nothing was drawn, the trail did not advance: no frame owed
+            return;
+        }
         if (!st.active || st.look.glow == 0 || st.glowFrames <= 0)
             return;
         // the phosphor is still decaying: ask for another full frame
@@ -735,7 +754,8 @@ static std::string statusJson() {
         const bool active = it != g_state->monitors.end() && it->second->active;
         const int  pitch  = it != g_state->monitors.end() ? it->second->pitch : 0;
         const float ms    = it != g_state->monitors.end() ? it->second->chain.lastGpuMs() : 0.f;
-        mons += std::format("{}{{\"name\":\"{}\",\"active\":{},\"pitch\":{},\"gpu_ms\":{:.3f}}}", mons.empty() ? "" : ",", jsonEsc(m->m_name), active ? "true" : "false", pitch, ms);
+        const long  idle  = it != g_state->monitors.end() ? it->second->idleFrames : 0;
+        mons += std::format("{}{{\"name\":\"{}\",\"active\":{},\"pitch\":{},\"gpu_ms\":{:.3f},\"idle_frames\":{}}}", mons.empty() ? "" : ",", jsonEsc(m->m_name), active ? "true" : "false", pitch, ms, idle);
     }
     return std::format("{{\"version\":\"{}\",\"enabled\":{},\"preset\":\"{}\",\"scope\":\"{}\",\"mode\":\"plugin\","
                        "\"knobs\":{{\"curve\":{},\"lines\":{},\"mask\":{},\"glow\":{},\"gamma\":{},\"sharp\":{},\"pitch\":{},\"pitch_fullscreen\":{},\"mask_pitch\":{},\"gain\":{:.3f},\"textsafe\":{}}},"
