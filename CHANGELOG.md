@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 (2026-09-12)
 
 ### Fixed
 - Updating the plugin (`omarchy plugin update`) left the old library running under the new panel and CLI for
