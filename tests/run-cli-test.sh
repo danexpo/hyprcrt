@@ -124,11 +124,11 @@ elif [ -e "$idata" ]; then
 else
     ok "hyprcrt install refuses under CLAUDECODE=1: $out"
 fi
-if out=$(env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" CLAUDECODE=1 HYPRCRT_LIVE=1 timeout 30 "$root/bin/hyprcrt" install --no-load --no-autostart 2>&1); then
-    [ -d "$idata/shaders" ] && ok "HYPRCRT_LIVE=1 overrides the CLAUDECODE refusal" || bad "HYPRCRT_LIVE=1 exited ok but wrote nothing: $out"
-else
-    bad "hyprcrt install under CLAUDECODE=1 HYPRCRT_LIVE=1 failed: $out"
-fi
+# the exit status is the plugin build's, which needs Hyprland headers (CI's checkers container has none):
+# what proves the override is the sandbox being written, as the env -i case below judges it
+out=$(env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" CLAUDECODE=1 HYPRCRT_LIVE=1 timeout 30 "$root/bin/hyprcrt" install --no-load --no-autostart 2>&1) || true
+[ -d "$idata/shaders" ] && [ -f "$idata/loader.lua" ] && ok "HYPRCRT_LIVE=1 overrides the CLAUDECODE refusal" \
+    || bad "hyprcrt install under CLAUDECODE=1 HYPRCRT_LIVE=1 wrote nothing: $out"
 rm -rf "$ih"; mkdir -p "$ih/run"
 timeout 30 env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" "$root/bin/hyprcrt" install --no-load --no-autostart >/dev/null 2>&1
 [ -d "$idata/shaders" ] && [ -d "$idata/presets" ] && [ -f "$idata/loader.lua" ] && ok "hyprcrt install (env -i, no CLAUDECODE) installs into the sandbox" \
