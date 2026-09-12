@@ -130,7 +130,7 @@ out=$(env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" CLAUDECODE=1 HYPR
 [ -d "$idata/shaders" ] && [ -f "$idata/loader.lua" ] && ok "HYPRCRT_LIVE=1 overrides the CLAUDECODE refusal" \
     || bad "hyprcrt install under CLAUDECODE=1 HYPRCRT_LIVE=1 wrote nothing: $out"
 rm -rf "$ih"; mkdir -p "$ih/run"
-timeout 30 env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" "$root/bin/hyprcrt" install --no-load --no-autostart >/dev/null 2>&1
+timeout 30 env -i PATH="$PATH" HOME="$ih" XDG_RUNTIME_DIR="$ih/run" "$root/bin/hyprcrt" install --no-load --no-autostart >/dev/null 2>&1 || true  # exit status is the plugin build's
 [ -d "$idata/shaders" ] && [ -d "$idata/presets" ] && [ -f "$idata/loader.lua" ] && ok "hyprcrt install (env -i, no CLAUDECODE) installs into the sandbox" \
     || bad "hyprcrt install (env -i, no CLAUDECODE) did not populate $idata"
 rm -rf "$ih"
