@@ -973,14 +973,16 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     auto& c = g_state->cfg;
 
     using namespace Config::Values;
+    SKnobs d; // the default look: the default preset's six knobs, not a second copy of them (tests/presetcheck)
+    applyPreset(DEFAULT_PRESET, d);
     c.enabled   = makeShared<CBoolValue>("plugin:crt:enabled", "Whether the CRT filter is enabled", true);
-    c.preset    = makeShared<CStringValue>("plugin:crt:preset", "plain, scanlines, monitor, television or custom (use the six knobs)", "monitor");
-    c.curve     = makeShared<CIntValue>("plugin:crt:curve", "Curved glass, vignette and corners (0/1)", 0, SIntValueOptions{.min = 0, .max = 1});
-    c.lines     = makeShared<CIntValue>("plugin:crt:lines", "Scanline depth 0-4", 3, SIntValueOptions{.min = 0, .max = 4});
-    c.mask      = makeShared<CIntValue>("plugin:crt:mask", "Phosphor mask: 0 none, 1 grille, 2 slot, 3 shadow", 1, SIntValueOptions{.min = 0, .max = 3});
-    c.glow      = makeShared<CIntValue>("plugin:crt:glow", "Halation and afterglow 0-4", 2, SIntValueOptions{.min = 0, .max = 4});
-    c.gamma     = makeShared<CIntValue>("plugin:crt:gamma", "Output gamma 0-4 (2.0 2.2 2.4 2.6 2.8)", 1, SIntValueOptions{.min = 0, .max = 4});
-    c.sharp     = makeShared<CIntValue>("plugin:crt:sharp", "Beam sharpness 0-4", 3, SIntValueOptions{.min = 0, .max = 4});
+    c.preset    = makeShared<CStringValue>("plugin:crt:preset", "plain, scanlines, monitor, television or custom (use the six knobs)", DEFAULT_PRESET);
+    c.curve     = makeShared<CIntValue>("plugin:crt:curve", "Curved glass, vignette and corners (0/1)", d.curve, SIntValueOptions{.min = 0, .max = 1});
+    c.lines     = makeShared<CIntValue>("plugin:crt:lines", "Scanline depth 0-4", d.lines, SIntValueOptions{.min = 0, .max = 4});
+    c.mask      = makeShared<CIntValue>("plugin:crt:mask", "Phosphor mask: 0 none, 1 grille, 2 slot, 3 shadow", d.mask, SIntValueOptions{.min = 0, .max = 3});
+    c.glow      = makeShared<CIntValue>("plugin:crt:glow", "Halation and afterglow 0-4", d.glow, SIntValueOptions{.min = 0, .max = 4});
+    c.gamma     = makeShared<CIntValue>("plugin:crt:gamma", "Output gamma 0-4 (2.0 2.2 2.4 2.6 2.8)", d.gamma, SIntValueOptions{.min = 0, .max = 4});
+    c.sharp     = makeShared<CIntValue>("plugin:crt:sharp", "Beam sharpness 0-4", d.sharp, SIntValueOptions{.min = 0, .max = 4});
     c.pitch     = makeShared<CIntValue>("plugin:crt:pitch", "Physical pixels per virtual scanline, 0 = auto (fullscreen integer factor, else pitch_fullscreen for fullscreen windows, 1 on the desktop)", 0, SIntValueOptions{.min = 0, .max = 8});
     c.pitchFullscreen = makeShared<CIntValue>("plugin:crt:pitch_fullscreen", "Auto pitch for a fullscreen window that is not integer-scaled (video, browsers): 3 on a 1440p monitor reads as a 480-line tube", 3, SIntValueOptions{.min = 1, .max = 8});
     c.maskPitch = makeShared<CIntValue>("plugin:crt:mask_pitch", "Physical pixels per mask stripe 1-3", 1, SIntValueOptions{.min = 1, .max = 3});

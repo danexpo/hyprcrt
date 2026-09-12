@@ -63,5 +63,68 @@ if out=$("$root/tools/crt-presets" --check 2>&1); then
 else
     bad "the tables are not what tools/crt-presets writes:"; sed 's/^/    /' <<<"$out"
 fi
+
+# ---- the default look ---------------------------------------------------------------------------------
+# The six numbers of the default preset are also both modes' defaults, and used to be hand-copied into
+# bin/hyprcrt's lite_read and plugin/src/main.cpp's plugin:crt:* registrations. tools/crt-presets names the
+# default preset; this reads each mode's effective defaults back and checks they are that preset's numbers.
+default=$(sed -n 's/^default_preset=\([a-z][a-z]*\).*/\1/p' "$root/tools/crt-presets" | tail -n1)
+[ -n "$default" ] && [ -f "$root/presets/$default.conf" ] ||
+    { echo "  FAIL tools/crt-presets: no default_preset= naming a presets/*.conf"; exit 1; }
+want=$(from_data | grep "^$default ")
+
+from_shell_defaults() { # lite mode with no state file: `hyprcrt status`, sandboxed away from the real profile
+    local tmp status name line k
+    tmp=$(mktemp -d)
+    status=$(env -i PATH="$PATH" HOME="$tmp" XDG_CONFIG_HOME="$tmp/config" XDG_STATE_HOME="$tmp/state" \
+                 XDG_DATA_HOME="$tmp/data" XDG_CACHE_HOME="$tmp/cache" "$root/bin/hyprcrt" status) || status=''
+    rm -rf "$tmp"
+    name=$(grep -o '"preset":"[a-z]*"' <<<"$status" | head -n1 | cut -d'"' -f4)
+    line=$name
+    for k in "${knobs[@]}"; do line+=" $k=$(grep -o "\"$k\":[0-9]*" <<<"$status" | head -n1 | cut -d: -f2)"; done
+    echo "$line"
+}
+cpp_arg() { # the default-value argument of a plugin:crt:<key> registration, as written in main.cpp
+    local line
+    line=$(grep -F "\"plugin:crt:$1\"" "$root/plugin/src/main.cpp" | head -n1)
+    line=${line#*makeShared<}                              # CIntValue>("plugin:crt:x", "help, with commas", 3, …
+    line=$(sed 's/"[^"]*"//; s/"[^"]*"//' <<<"$line")      # CIntValue>(, , 3, …   (the key and the help text gone)
+    sed 's/^[^(]*( *, *, *//; s/[,)].*$//; s/[[:space:]]*$//' <<<"$line"
+}
+from_cpp_defaults() { # the same registrations, with `d.curve`-style expressions resolved through applyPreset
+    local name row line k v e
+    e=$(cpp_arg preset)
+    case $e in
+        '"'*'"') name=$(sed 's/"//g' <<<"$e") ;;
+        *) name=$(sed -n "s/.*$e *= *\"\([a-z]*\)\".*/\1/p" "$root/plugin/src/Look.hpp" | tail -n1) ;;
+    esac
+    row=$(from_cpp | grep "^${name:-nosuch} ") || row=''
+    line=${name:-?}
+    for k in "${knobs[@]}"; do
+        e=$(cpp_arg "$k")
+        case $e in
+            [0-9]*) v=$e ;;                                               # a hand-written literal
+            *.$k)   v=$(tr ' ' '\n' <<<"$row" | sed -n "s/^$k=//p") ;;    # taken from the generated table
+            *)      v="?$e" ;;
+        esac
+        line+=" $k=$v"
+    done
+    echo "$line"
+}
+
+for copy in shell cpp; do
+    case $copy in
+        shell) where="bin/hyprcrt lite_read"  have=$(from_shell_defaults) ;;
+        cpp)   where="main.cpp plugin:crt:*"  have=$(from_cpp_defaults) ;;
+    esac
+    if [ "$want" = "$have" ]; then
+        echo "  ok   $where defaults are presets/$default.conf ($want)"
+    else
+        bad "$where defaults are not presets/$default.conf:"
+        echo "    presets/$default.conf: $want"
+        echo "    ${where}: $have"
+    fi
+done
+
 [ "$fails" = 0 ] || { echo "presets: out of step with presets/*.conf; run tools/crt-presets and commit the three together"; exit 1; }
-echo "presets: bin/hyprcrt and Look.hpp carry the numbers in presets/*.conf, as tools/crt-presets writes them"
+echo "presets: bin/hyprcrt and Look.hpp carry the numbers in presets/*.conf as tools/crt-presets writes them, and both modes default to presets/$default.conf"

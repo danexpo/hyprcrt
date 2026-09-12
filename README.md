@@ -202,7 +202,7 @@ shaders/single/template.frag lite mode: one pass, knobs baked in by tools/crt-ge
 shaders/passes/*.frag       full mode: down, glow, halo_h, halo_v, beam, scan, glass
 presets/*.conf              the four presets; edit one, then tools/crt-presets writes the tables both modes read
 tools/crt-look, crt-gen     knobs → numbers, numbers → shader
-tools/crt-presets           presets/*.conf → the preset tables in bin/hyprcrt and plugin/src/Look.hpp
+tools/crt-presets           presets/*.conf → the preset tables and the default preset's name in bin/hyprcrt and plugin/src/Look.hpp
 tools/crt-fetch             download the prebuilt plugin for the installed Hyprland, verify, install
 tools/crt-build             fetch or build, install, wire up the loader
 plugin/                     the Hyprland plugin (C++23, MIT)

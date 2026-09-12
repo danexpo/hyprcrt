@@ -6,6 +6,11 @@ Broader-audience release: no build step for most people, a compositor that canno
 defaults that tell text from pictures, and install paths beyond Omarchy.
 
 ### Added
+- Both modes' defaults are the default preset's six knobs, not a copy of them: `tools/crt-presets` writes
+  `default_preset` into `bin/hyprcrt` and `DEFAULT_PRESET` into `plugin/src/Look.hpp`, `lite_read` calls
+  `lite_preset_knobs` and the plugin registers `plugin:crt:curve`…`sharp` from `applyPreset(DEFAULT_PRESET)`.
+  `tests/presetcheck` reads each mode's effective defaults back and fails when they are not
+  `presets/monitor.conf` (C10).
 - `make bench`: the offscreen GPU cost table in `docs/perf.md`, re-measured 2026-09-11 (Omarchy 4.0.3, Mesa 26.2.2).
 - `docs/perf.md`'s in-compositor GPU timer table, re-measured 2026-09-11 against a fresh nested session (was dated 2026-09-05); its resolution claim is now described as not pinned by the harness rather than a fixed 1600×900.
 - Prebuilt plugin: CI publishes `hyprcrt-<hyprland commit>.so` to a rolling GitHub release;
