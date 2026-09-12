@@ -96,7 +96,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install checkers
-        run: pacman -Syu --noconfirm --needed shellcheck lua jq python
+        run: pacman -Syu --noconfirm --needed shellcheck lua jq python diffutils # tools/crt-presets uses cmp and diff
       - uses: actions/checkout@v4
       - name: shellcheck
         run: shellcheck -S warning -e SC1091,SC2016 bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh tests/presetcheck tools/crt-presets tests/run-damage-test.sh tests/run-capture-test.sh tests/uniformcheck
