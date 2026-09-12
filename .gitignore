@@ -7,3 +7,15 @@ tests/out/
 # editor and OS noise
 *.swp
 .DS_Store
+
+# internal working docs and agent loop (kept on disk, out of the public tree)
+.claude/
+docs/PLAN.md
+docs/TODO.md
+docs/HANDOFF.md
+docs/QUESTIONS.md
+docs/PASSES.md
+docs/BACKLOG.md
+docs/reviews/
+CLAUDE.md
+docs/passes/

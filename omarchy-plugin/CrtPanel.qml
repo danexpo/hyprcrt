@@ -137,7 +137,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰍹"
+    text: "󰟴"
     opacity: root.enabled ? 1.0 : 0.55
     tooltipText: root.enabled ? "CRT filter: " + Model.presetLabel(root.preset) : "CRT filter off"
     onPressed: function(b) {

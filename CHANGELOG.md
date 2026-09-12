@@ -1,9 +1,12 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-09-12)
 
 Broader-audience release: no build step for most people, a compositor that cannot be taken down twice,
-defaults that tell text from pictures, and install paths beyond Omarchy.
+defaults that tell text from pictures, and a verified prebuilt for the running Hyprland.
+
+### Changed
+- The bar button is the television glyph (󰟴), the one the Television preset already uses, instead of a monitor.
 
 ### Added
 - Both modes' defaults are the default preset's six knobs, not a copy of them: `tools/crt-presets` writes
