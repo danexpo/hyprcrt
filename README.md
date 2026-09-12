@@ -205,6 +205,7 @@ tools/crt-look, crt-gen     knobs → numbers, numbers → shader
 tools/crt-presets           presets/*.conf → the preset tables and the default preset's name in bin/hyprcrt and plugin/src/Look.hpp
 tools/crt-fetch             download the prebuilt plugin for the installed Hyprland, verify, install
 tools/crt-build             fetch or build, install, wire up the loader
+tools/crt-previews          re-render docs/previews/*.png from source.png and text_source.png (`make previews`)
 plugin/                     the Hyprland plugin (C++23, MIT)
 omarchy-plugin/             CrtPanel.qml (bar widget + panel), Service.qml, Model.js, hooks, menu, bindings, previews
 contrib/hyprland, waybar    plain-Hyprland config snippet, Waybar module
@@ -222,13 +223,14 @@ tests/presetcheck           the preset tables in bin/hyprcrt and Look.hpp are wh
 tests/uniformcheck          every loc("name") in Chain.cpp names a uniform its own pass's .frag declares
 bench/bench.c               the GPU cost benchmark behind the numbers above
 docs/PLAN.md                the feasibility analysis and plan this was built from
-docs/previews/              the presets on a test card
+docs/previews/              the presets on a test card; source.png and text_source.png are the inputs, the rest `make previews` output
 ```
 
 ## Testing
 
 ```sh
 make gate                             # the CI gate: plugin build, every shader compiled, the preset tables, the CLI, the install, shell/lua/json/qml
+make previews                         # re-render the README's images; `git diff docs/previews` is empty unless a shader moved
 tests/run-nested.sh auto monitor 0 &  # a nested Hyprland with the plugin loaded (scope, preset, pitch)
 hyprctl -i "$(cat tests/out/nested.sig)" crt status
 hyprctl -i "$(cat tests/out/nested.sig)" crt dump /tmp/out.ppm   # look at the filtered frame

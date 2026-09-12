@@ -1,0 +1,38 @@
+#!/bin/sh
+# crt-previews - render docs/previews/*.png, the images the README shows, from the checked-in
+# sources (source.png, text_source.png) through the lite shader tests/shadercheck compiles.
+# usage: tools/crt-previews [outdir]        (default docs/previews)
+#
+# Every render goes through an 8-bit ppm: shadercheck reads P6 only, and a 16-bit one read as bytes
+# is what corrupted the whole set once (C12). Deterministic - two runs are byte-identical.
+set -eu
+here=$(cd "$(dirname "$0")/.." && pwd)
+out=${1:-$here/docs/previews}
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+
+[ -x "$here/tests/shadercheck" ] || make -C "$here" shadercheck >/dev/null
+command -v magick >/dev/null || { echo "crt-previews: needs ImageMagick (magick)" >&2; exit 1; }
+
+PITCH=${PITCH:-3}
+
+# render SRC.png through PRESET into OUT.png at the source's own size
+render() {
+    "$here/tools/crt-gen" "$here/presets/$2.conf" "pitch=$PITCH" > "$tmp/$2.frag"
+    magick "$1" -depth 8 "$tmp/in.ppm"
+    "$here/tests/shadercheck" "$tmp/$2.frag" "$tmp/in.ppm" "$tmp/out.ppm" >/dev/null
+    magick "$tmp/out.ppm" -depth 8 -strip "$3"
+}
+
+for p in plain scanlines monitor television; do
+    render "$out/source.png" "$p" "$out/$p.png"
+    echo "previews: $out/$p.png"
+done
+
+# the mask and the beam, big enough to see: the top-left corner of the monitor render, 3x nearest
+magick "$out/monitor.png" -crop 320x180+0+0 +repage -sample 300% -strip "$out/monitor_zoom.png"
+echo "previews: $out/monitor_zoom.png"
+
+# small text before and after, stacked: the accessibility check the README's scope table rests on
+render "$out/text_source.png" monitor "$tmp/text_monitor.png"
+magick "$out/text_source.png" "$tmp/text_monitor.png" -append -depth 8 -strip "$out/text_source_vs_monitor.png"
+echo "previews: $out/text_source_vs_monitor.png"

@@ -43,6 +43,13 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- Every image the README shows was a render of corrupted input. `tests/shadercheck` read a P6 header's
+  maxval and then read the pixels as bytes regardless, so the 16-bit ppm `magick source.png out.ppm`
+  writes for a 16-bit png was consumed as an 8-bit one — half the picture, high and low bytes
+  interleaved. It now reads 16-bit ppm properly and refuses any other maxval. `docs/previews/*.png` are
+  re-rendered from that fix; `text_source_vs_monitor.png`'s filtered half had been a colour checkerboard
+  rather than text. `tools/crt-previews` (`make previews`) is now the one command that renders them all,
+  byte-reproducibly, so a stale preview shows up as a `git diff` (C12).
 - `hyprcrt install` no longer waits forever for the prebuilt download on a network that hangs instead of
   refusing (a captive portal, a firewall that drops packets): `tools/crt-fetch` gives up after 20 s without a
   byte and compiles instead, while a slow but working link still gets the library (`tests/run-install-test.sh`).

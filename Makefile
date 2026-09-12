@@ -1,6 +1,6 @@
 # hyprcrt - the gate, in one word. Mirrors .github/workflows/build.yml so a piece is green here
 # before CI sees it. GPU compiles and the live behaviour are proved in tests/run-nested.sh.
-SH_FILES  = bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh tests/presetcheck tools/crt-presets tests/run-damage-test.sh tests/run-capture-test.sh tests/uniformcheck
+SH_FILES  = bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh tests/presetcheck tools/crt-presets tests/run-damage-test.sh tests/run-capture-test.sh tests/uniformcheck tools/crt-previews
 LUA_FILES = lua/loader.lua omarchy-plugin/bindings.lua contrib/hyprland/hyprcrt.lua tests/nested.lua tests/loader-test.lua
 GATE_OUT  = tests/out/gate
 # Arch ships qmllint outside PATH, in /usr/lib/qt6/bin
@@ -8,7 +8,7 @@ QMLLINT  ?= $(or $(shell command -v qmllint 2>/dev/null),$(wildcard /usr/lib/qt6
 # syntax and everything else qmllint checks, minus what needs omarchy-shell's qs.* modules to resolve
 QMLLINT_FLAGS = --import disable --unresolved-type disable --unqualified disable --required disable --signal-handler-parameters disable -W 0
 
-.PHONY: gate plugin shaders presets uniforms cli install-test shell lua json qml shadercheck bench clean
+.PHONY: gate plugin shaders presets uniforms cli install-test shell lua json qml shadercheck previews bench clean
 
 gate: plugin shaders presets uniforms cli install-test shell lua json qml
 	@echo "gate: green - plugin built, every shader compiles, the preset tables agree with presets/*.conf, Chain.cpp's uniform names agree with the passes, the CLI refuses bad values, the README's install works on a clean HOME, shell/lua/json/qml checks passed"
@@ -65,6 +65,11 @@ bench: bench/bench
 	@for r in $(BENCH_SIZES); do bench/bench $${r%x*} $${r#*x} || exit 1; done
 bench/bench: bench/bench.c
 	gcc -O2 $< -o $@ $$(pkg-config --cflags --libs egl glesv2 gbm) -lm
+
+# the README's images, re-rendered from docs/previews/source.png and text_source.png (needs /dev/dri
+# and ImageMagick). Deterministic: after a run with no shader change, `git diff docs/previews` is empty.
+previews: tests/shadercheck
+	tools/crt-previews
 
 # the offscreen shader runner, for rendering docs/previews (see README)
 shadercheck: tests/shadercheck

@@ -27,11 +27,16 @@ static char* slurp(const char* path) {
     fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
     char* s = malloc(n + 1); if (fread(s, 1, n, f) != (size_t)n) { perror("read"); exit(1); } s[n] = 0; fclose(f); return s;
 }
+/* P6, maxval 255 (one byte per sample) or 65535 (two, big-endian - `magick x.png x.ppm` writes these
+ * for a 16-bit png, and reading them as bytes gives a striped half-image, not an error). */
 static unsigned char* readPPM(const char* path, int* w, int* h) {
     FILE* f = fopen(path, "rb"); if (!f) { perror(path); exit(1); }
     int maxv; if (fscanf(f, "P6 %d %d %d", w, h, &maxv) != 3) { fprintf(stderr, "not a P6 ppm\n"); exit(1); }
+    if (maxv != 255 && maxv != 65535) { fprintf(stderr, "%s: ppm maxval %d, expected 255 or 65535 (magick x.png -depth 8 x.ppm)\n", path, maxv); exit(1); }
     fgetc(f);
-    unsigned char* rgb = malloc((size_t)*w * *h * 3); if (fread(rgb, 1, (size_t)*w * *h * 3, f) != (size_t)*w * *h * 3) { fprintf(stderr, "short ppm\n"); exit(1); }
+    size_t n = (size_t)*w * *h * 3, bpp = maxv == 255 ? 1 : 2;
+    unsigned char* rgb = malloc(n * bpp); if (fread(rgb, 1, n * bpp, f) != n * bpp) { fprintf(stderr, "short ppm\n"); exit(1); }
+    if (bpp == 2) for (size_t i = 0; i < n; i++) rgb[i] = rgb[i*2];   /* high byte of each big-endian sample */
     fclose(f);
     unsigned char* rgba = malloc((size_t)*w * *h * 4);
     for (size_t i = 0; i < (size_t)*w * *h; i++) { rgba[i*4] = rgb[i*3]; rgba[i*4+1] = rgb[i*3+1]; rgba[i*4+2] = rgb[i*3+2]; rgba[i*4+3] = 255; }
