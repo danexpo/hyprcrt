@@ -36,6 +36,12 @@ done
 
 die() { echo "crt-build: $*" >&2; exit 1; }
 
+# An agent session (Claude Code sets CLAUDECODE) never writes the live install: the tests run this under
+# env -i HOME=<sandbox>, which drops that variable; HYPRCRT_LIVE=1 is the user's own override.
+if [ -n "${CLAUDECODE:-}" ] && [ -z "${HYPRCRT_LIVE:-}" ]; then
+    die "refusing to write the live $data from an agent session: run it under env -i HOME=<sandbox> on the same command line (tests/run-install-test.sh does), or HYPRCRT_LIVE=1 when the user asked for the real install"
+fi
+
 
 hdr=$(grep -m1 'GIT_COMMIT_HASH' "$(pkg-config --variable=includedir hyprland 2>/dev/null || echo /usr/include)/hyprland/src/version.h" 2>/dev/null | cut -d'"' -f2 || true)
 [ -n "$hdr" ] || hdr=$(grep -m1 'GIT_COMMIT_HASH' /usr/include/hyprland/src/version.h | cut -d'"' -f2)
