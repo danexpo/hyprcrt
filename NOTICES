@@ -2,8 +2,7 @@ hyprcrt - third-party notices
 
 The tube model (energy-conserving scanlines with a brightness-dependent beam,
 phosphor mask with the mean folded back to one, halation, afterglow, curved
-glass) is the author's own, first written for an-earlier-project (src/platform/sdl2/crt.c)
-and ported to GPU passes for an-earlier-project. Both MIT, (c) 2026 Dan Expo.
+glass) is the author's own. MIT, (c) 2026 Dan Expo.
 
 The screen warp, the exp2(hard * d^2) beam spot and the light/dark phosphor
 mask multipliers follow the public-domain CRT shader by Timothy Lottes:

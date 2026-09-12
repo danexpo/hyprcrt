@@ -272,7 +272,6 @@ PY
             else
                 echo "  remove the bar widget and panel: omarchy plugin remove $id"
             fi ;;
-        /usr/share/hyprcrt) echo "  remove the package: sudo pacman -R hyprcrt-git" ;;
         *) [ "$toggled" = 1 ] || echo "  remove the dofile line for hyprcrt from your Hyprland config"
            echo "  the source clone ($root) is yours to delete" ;;
     esac

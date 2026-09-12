@@ -1,6 +1,5 @@
 -- hyprcrt loader. Sourced by Hyprland's Lua config on every start and reload:
 --   Omarchy: ~/.local/state/omarchy/toggles/hypr/hyprcrt.lua does pcall(dofile, "<data>/hyprcrt/loader.lua")
---   plain Hyprland: add that same line to your hyprland.lua
 -- It decides between full mode (the plugin) and lite mode (the screen shader) from the files the
 -- `hyprcrt` command maintains, and keeps a plugin that crashed the last session from loading again.
 -- Installed copy of lua/loader.lua; `hyprcrt install` refreshes it. MIT (c) 2026 Dan Expo.

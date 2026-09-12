@@ -1,9 +1,8 @@
 # hyprcrt
 
-A system-wide CRT filter for Hyprland, packaged as an Omarchy plugin and usable on plain Hyprland.
+A system-wide CRT filter for Hyprland, packaged as an Omarchy plugin.
 
-It is the tube model from [an-earlier-project](../an-earlier-project) (`crt.c`) and its GPU port in an-earlier-project,
-applied to the whole screen: energy-conserving scanlines whose beam fattens with brightness, an
+It is the author's own tube model applied to the whole screen: energy-conserving scanlines whose beam fattens with brightness, an
 aperture-grille / slot / shadow phosphor mask with the mean folded back to one, halation, a phosphor
 afterglow trail, per-gun sharpness (red bleed), gamma, and Lottes' curved glass with vignette and
 rounded corners. Four presets (Plain, Scanlines, Monitor, Television) and six knobs.
@@ -66,28 +65,8 @@ picture) and `SUPER+CTRL+ALT+C` (panel):
 pcall(dofile, os.getenv("HOME") .. "/.config/omarchy/plugins/danexpo.crt/omarchy-plugin/bindings.lua")
 ```
 
-### Plain Hyprland
-
-```sh
-git clone https://github.com/danexpo/hyprcrt ~/.local/share/hyprcrt-src
-~/.local/share/hyprcrt-src/bin/hyprcrt install --no-load --no-autostart   # links ~/.local/bin/hyprcrt
-```
-
-Then source the loader and, if you like, the example keybindings from `~/.config/hypr/hyprland.lua`:
-
-```lua
-dofile(os.getenv("HOME") .. "/.local/share/hyprcrt-src/contrib/hyprland/hyprcrt.lua")
-```
-
-`contrib/waybar/` has a Waybar module (click toggles, right-click cycles, scroll changes the
-scanline depth). `hyprcrt` needs `bash`, `python3` and `hyprctl`; `hyprcrt shot` wants ImageMagick
-and, in lite mode, `grim`.
-
-### Arch packages
-
-`packaging/aur/PKGBUILD` builds `hyprcrt-git` with the plugin in `/usr/lib/hyprcrt/` and everything
-else under `/usr/share/hyprcrt/`; `hyprpm add https://github.com/danexpo/hyprcrt` works too
-(`hyprpm.toml`). Both compile against the installed Hyprland headers.
+`hyprcrt` needs `bash`, `python3` and `hyprctl`; `hyprcrt shot` wants ImageMagick and, in lite mode,
+`grim`.
 
 ### After a Hyprland update
 
@@ -120,8 +99,7 @@ It unloads the plugin and clears the lite shader in the running session, then re
 toggle file, the post-update hook, the Style > CRT filter menu entries (your own entries stay) and the
 `~/.local/bin/hyprcrt` link install made. Run from the Omarchy plugin, it also removes the plugin
 (`omarchy plugin remove danexpo.crt`; it asks first, `--yes` does not). It prints what it cannot
-remove itself: the pacman hook in `/etc`, the Arch package, and on plain Hyprland the `dofile` line
-in your config and the clone.
+remove itself: the pacman hook in `/etc`.
 
 ## Using it
 
@@ -209,8 +187,6 @@ tools/crt-build             fetch or build, install, wire up the loader
 tools/crt-previews          re-render docs/previews/*.png from source.png and text_source.png (`make previews`)
 plugin/                     the Hyprland plugin (C++23, MIT)
 omarchy-plugin/             CrtPanel.qml (bar widget + panel), Service.qml, Model.js, hooks, menu, bindings, previews
-contrib/hyprland, waybar    plain-Hyprland config snippet, Waybar module
-packaging/aur               PKGBUILD
 tests/shadercheck.c         compile a screen shader offscreen, run an image through it (previews, lite-mode shots)
 tests/run-nested.sh         a nested Hyprland with the freshly built plugin (never test in the live session)
 tests/run-loader-test.sh    a nested Hyprland wired only through the loader, for the crash-loop guard
@@ -219,7 +195,7 @@ tests/run-capture-test.sh   what a plain screenshot and `hyprcrt shot` hold, in 
 tests/lib-nested.sh         the launcher both use: signature and socket files, no shell inside, cleanup
 tests/shadergate            every shader either mode loads, compiled (glslang, and the GPU where there is one)
 tests/run-cli-test.sh       bin/hyprcrt in a sandboxed HOME: what `set` refuses and stores
-tests/run-install-test.sh   the README's plain-Hyprland install on a clean HOME, against a local stand-in release
+tests/run-install-test.sh   `hyprcrt install` on a clean HOME, against a local stand-in release
 tests/presetcheck           the preset tables in bin/hyprcrt and Look.hpp are what presets/*.conf generates
 tests/uniformcheck          every loc("name") in Chain.cpp names a uniform its own pass's .frag declares
 bench/bench.c               the GPU cost benchmark behind the numbers above
@@ -250,9 +226,8 @@ hl.window_rule({ match = { class = "^aquamarine$" }, workspace = "special:crt-te
 ```
 
 Never load an untested build into the live session: a plugin fault takes the whole compositor down.
-`tests/shadercheck.c` also renders an-earlier-project's verification frames through the lite shader;
-the Monitor preset matches the game's own output, the Television preset differs only in the
-halation, which the single pass can only approximate.
+`tests/shadercheck.c` renders a test image through the lite shader offscreen; the Television preset
+differs from full mode only in the halation, which the single pass can only approximate.
 
 ## Notes and limits
 

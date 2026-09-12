@@ -23,8 +23,8 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - Crash-loop guard: the plugin records the compositor pid while loaded; if Hyprland leaves a crash
   report for that pid, the loader keeps the plugin off, falls back to lite mode and says so
   (`hyprcrt plugin status`, `hyprcrt plugin enable` lifts it).
-- One loader for both modes (`lua/loader.lua`): Omarchy's toggle file and plain Hyprland configs
-  source it; it never stacks the lite shader on top of the plugin.
+- One loader for both modes (`lua/loader.lua`): Omarchy's toggle file
+  sources it; it never stacks the lite shader on top of the plugin.
 - Scope `auto` (new default): fullscreen windows get the tube, windowed media players and emulators
   (the `media` regex) get it through their own transformer, the desktop stays text-safe.
 - `pitch_fullscreen`: the virtual line pitch for fullscreen video and browsers (3 = a 480-line tube on
@@ -38,7 +38,6 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
   removes everything install, the loader and both modes wrote (data, state, `state.conf`, the toggle
   file, the post-update hook, the menu entries, its own `~/.local/bin` link), keeps the user's own menu
   entries, removes the Omarchy plugin when run from it, and prints what needs root or the user's config.
-- Plain Hyprland: `contrib/hyprland/hyprcrt.lua`; Waybar: `contrib/waybar/`; AUR: `packaging/aur/`.
 - Preset previews rendered from a test card (`docs/previews/`), issue template, script checks in CI.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
@@ -65,8 +64,7 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
   (`tests/run-damage-test.sh`).
 - The README says plainly that the GitHub repository and its prebuilt releases are not published yet, and
   what `hyprcrt install` needs meanwhile.
-- The AUR package depends on jq, which the Omarchy menu's check marks and the Waybar module call; it was optional,
-  and the Waybar module showed nothing without it (`make json` checks it).
+- jq is a hard dependency: the Omarchy menu's check marks call it.
 - Lite mode no longer takes knobs it cannot use: `set scope`, `low_power`, `pitch_fullscreen`, `match`,
   `media` and `hyprcrt power on|off|auto` exit 1 with "needs the full-mode plugin" and leave the state file as it was;
   lite `status` carries no `scope` or `low_power`, and the panel hides those rows in lite mode instead of

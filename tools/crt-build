@@ -10,7 +10,7 @@
 #    otherwise builds plugin/ with make (--build skips the download and always compiles),
 #    and installs it as ~/.local/share/hyprcrt/hyprcrt-<hash>.so,
 # 4. installs lua/loader.lua and, on Omarchy, the toggle file that sources it on every start
-#    (or prints the line to add to a plain Hyprland config), and
+#    (or prints the line to add to a Hyprland config without Omarchy), and
 # 5. loads it into the running session unless --no-load (scripts should always pass --no-load).
 # MIT (c) 2026 Dan Expo
 set -euo pipefail

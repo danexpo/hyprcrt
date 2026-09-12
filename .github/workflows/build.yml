@@ -107,12 +107,11 @@ jobs:
       - name: The CLI in a sandboxed HOME (what set refuses and stores)
         run: tests/run-cli-test.sh
       - name: Lua syntax
-        run: for f in lua/loader.lua omarchy-plugin/bindings.lua contrib/hyprland/hyprcrt.lua tests/nested.lua tests/loader-test.lua; do luac -p "$f"; done
+        run: for f in lua/loader.lua omarchy-plugin/bindings.lua tests/nested.lua tests/loader-test.lua; do luac -p "$f"; done
       - name: JSON and JSONC
         run: |
           jq -e '.schemaVersion == 1 and (.id | startswith("omarchy.") | not)' manifest.json
-          python3 -c "import re,json; [json.loads(re.sub(r'^\s*//.*$','',open(f).read(),flags=re.M)) for f in ('omarchy-plugin/menu.jsonc','contrib/waybar/hyprcrt.jsonc')]"
-          grep -q "^depends=(.*'jq'" packaging/aur/PKGBUILD # the menu and the Waybar module run jq
+          python3 -c "import re,json; [json.loads(re.sub(r'^\s*//.*$','',open(f).read(),flags=re.M)) for f in ('omarchy-plugin/menu.jsonc',)]"
 
   omarchy-plugin:
     name: Omarchy plugin QML lint

@@ -1,7 +1,7 @@
 # hyprcrt - the gate, in one word. Mirrors .github/workflows/build.yml so a piece is green here
 # before CI sees it. GPU compiles and the live behaviour are proved in tests/run-nested.sh.
 SH_FILES  = bin/hyprcrt tools/crt-build tools/crt-fetch omarchy-plugin/hooks/hyprcrt-rebuild tests/run-nested.sh tests/run-loader-test.sh tests/shadergate tests/run-cli-test.sh tests/lib-nested.sh tests/run-install-test.sh tests/presetcheck tools/crt-presets tests/run-damage-test.sh tests/run-capture-test.sh tests/uniformcheck tools/crt-previews
-LUA_FILES = lua/loader.lua omarchy-plugin/bindings.lua contrib/hyprland/hyprcrt.lua tests/nested.lua tests/loader-test.lua
+LUA_FILES = lua/loader.lua omarchy-plugin/bindings.lua tests/nested.lua tests/loader-test.lua
 GATE_OUT  = tests/out/gate
 # Arch ships qmllint outside PATH, in /usr/lib/qt6/bin
 QMLLINT  ?= $(or $(shell command -v qmllint 2>/dev/null),$(wildcard /usr/lib/qt6/bin/qmllint))
@@ -49,10 +49,8 @@ lua:
 
 json:
 	@jq -e '.schemaVersion == 1 and (.id | startswith("omarchy.") | not)' manifest.json >/dev/null
-	@python3 -c "import re,json; [json.loads(re.sub(r'^\s*//.*$$','',open(f).read(),flags=re.M)) for f in ('omarchy-plugin/menu.jsonc','contrib/waybar/hyprcrt.jsonc')]"
-	@# the menu and the Waybar module run jq, so the package cannot leave it optional
-	@grep -q "^depends=(.*'jq'" packaging/aur/PKGBUILD || { echo "json: menu.jsonc and the Waybar module call jq; packaging/aur/PKGBUILD must depend on it"; exit 1; }
-	@echo "json: manifest and jsonc parse; the AUR package depends on the jq they call"
+	@python3 -c "import re,json; [json.loads(re.sub(r'^\s*//.*$$','',open(f).read(),flags=re.M)) for f in ('omarchy-plugin/menu.jsonc',)]"
+	@echo "json: manifest and jsonc parse"
 
 # a syntax error fails; unresolved qs.* names do not (those modules come from omarchy-shell). CI always runs it.
 qml:

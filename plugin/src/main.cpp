@@ -861,7 +861,7 @@ static SDispatchResult applyCommand(const std::string& cmdline) {
         if (a.empty() || b.empty())
             return {.success = false, .error = "usage: set <key> <value>"};
         if (isKnob(a)) {
-            // touching a knob makes the preset custom, as in an-earlier-project's menu
+            // touching a knob makes the preset custom
             const SKnobs k = effectiveKnobs();
             g_state->overrides["preset"] = "custom";
             g_state->overrides["curve"]  = std::to_string(k.curve);

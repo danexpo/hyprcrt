@@ -1,5 +1,5 @@
 #!/bin/bash
-# run-install-test.sh - the README's plain-Hyprland install on a clean HOME, as a stranger would run it.
+# run-install-test.sh - `hyprcrt install` from a checkout on a clean HOME, as a stranger would run it.
 #   tests/run-install-test.sh [plugin.so]   (default plugin/out/hyprcrt.so, which `make plugin` builds)
 # A local directory stands in for the GitHub "prebuilt" release: SHA256SUMS plus the library, named after the commit
 # the installed Hyprland headers carry. So the prebuilt path runs end to end offline: crt-fetch --check finds that
@@ -30,7 +30,7 @@ ok()  { echo "  ok   $*"; }
 bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 run() { local rel=$1; shift; env -i PATH="$PATH" HOME="$h" XDG_RUNTIME_DIR="$sb/run" HYPRCRT_RELEASE_URL="file://$sb/$rel" "$@"; }
 
-# the README's `git clone`: the tracked files as the working tree has them, so the test sees uncommitted changes
+# a checkout: the tracked files as the working tree has them, so the test sees uncommitted changes
 src=$h/.local/share/hyprcrt-src
 mkdir -p "$src"
 if files=$(git -C "$root" ls-files -z --cached --others --exclude-standard 2>/dev/null | tr '\0' '\n') && [ -n "$files" ]; then
@@ -63,9 +63,8 @@ fi
 missing=""
 for p in loader.lua shaders/common.glsl presets/monitor.conf tools/crt-gen tools/crt-build tools/crt-fetch; do [ -e "$data/$p" ] || missing="$missing $p"; done
 cmp -s "$data/loader.lua" "$src/lua/loader.lua" || missing="$missing loader.lua(differs)"
-[ -e "$src/contrib/hyprland/hyprcrt.lua" ] || missing="$missing contrib/hyprland/hyprcrt.lua"
-[ -z "$missing" ] && ok "loader, shaders, presets, tools and the README's contrib file are in place" || bad "missing:$missing"
-[ ! -e "$h/.local/state/omarchy" ] && [ ! -e "$h/.config/omarchy" ] && ok "--no-autostart on plain Hyprland wrote nothing of Omarchy's" || bad "install wrote Omarchy files on plain Hyprland"
+[ -z "$missing" ] && ok "loader, shaders, presets and tools are in place" || bad "missing:$missing"
+[ ! -e "$h/.local/state/omarchy" ] && [ ! -e "$h/.config/omarchy" ] && ok "--no-autostart without Omarchy wrote nothing of Omarchy's" || bad "install wrote Omarchy files where there is no Omarchy"
 st=$(run release "$h/.local/bin/hyprcrt" plugin status 2>&1 || true)
 [[ $st == *"built: yes"*"for Hyprland ${hdr:0:12}"* && $st == *"loaded: no"* ]] && ok "hyprcrt plugin status: built for ${hdr:0:12}, not loaded" || bad "plugin status: $st"
 [ "$(run release "$h/.local/bin/hyprcrt" mode 2>&1)" = lite ] && ok "with no compositor running, mode is lite" || bad "mode is not lite before any Hyprland start"

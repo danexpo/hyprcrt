@@ -1,6 +1,6 @@
 // hyprcrt common.glsl - the tube model shared by the single-pass screen shader and the plugin passes.
 // GLSL ES 3.00. No #version here: the file is spliced in after the version line by crt-gen / the plugin.
-// MIT (c) 2026 Dan Expo. Model from an-earlier-project crt.c Rev 31/33; warp, spot and mask after Timothy Lottes (public domain).
+// MIT (c) 2026 Dan Expo. Warp, spot and mask after Timothy Lottes (public domain).
 
 // ---- light ---------------------------------------------------------------------------------------------
 vec3 crt_lin(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
