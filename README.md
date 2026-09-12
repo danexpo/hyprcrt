@@ -34,10 +34,11 @@ keybindings; the plugin is picked up automatically once it is installed.
 
 ## Install
 
-> **Not published yet.** The `github.com/danexpo/hyprcrt` repository and its prebuilt releases named
-> below do not exist yet, so those URLs fail and `tools/crt-fetch --check` exits 3 ("no prebuilt release
-> reachable"). Until they do, work from a local checkout: `hyprcrt install` then compiles the plugin
-> instead, which needs `base-devel` and the Hyprland headers (Arch's `hyprland` package ships them).
+> **Not public yet.** `github.com/danexpo/hyprcrt` exists and CI publishes a prebuilt plugin to its
+> rolling `prebuilt` release, but the repository is private, so every URL below answers 404 to anyone
+> not signed in with access and `tools/crt-fetch --check` exits 3 ("no prebuilt release reachable").
+> Until it is public, work from a local checkout: `hyprcrt install` then compiles the plugin instead,
+> which needs `base-devel` and the Hyprland headers (Arch's `hyprland` package ships them).
 
 ### Omarchy 4 (Hyprland 0.56)
 

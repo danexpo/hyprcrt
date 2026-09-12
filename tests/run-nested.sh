@@ -7,7 +7,8 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 mkdir -p "$root/tests/out"
-export HYPRCRT_SO="$root/plugin/out/hyprcrt.so"
+# the tree's own build by default; set HYPRCRT_SO to load another one (a prebuilt release, say)
+export HYPRCRT_SO="${HYPRCRT_SO:-$root/plugin/out/hyprcrt.so}"
 export HYPRCRT_SHADERS="$root/shaders"
 export HYPRCRT_SCOPE="${1:-all}"
 export HYPRCRT_PRESET="${2:-monitor}"

@@ -43,6 +43,9 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 - `tests/run-loader-test.sh`: a nested session that exercises the loader and the guard.
 
 ### Fixed
+- The README's install note said the `github.com/danexpo/hyprcrt` repository does not exist yet. It now
+  does, and CI publishes a prebuilt plugin to its rolling `prebuilt` release; the note says what is
+  actually in the way, that the repository is private and so those URLs answer 404 to a stranger (DR-F5).
 - Every image the README shows was a render of corrupted input. `tests/shadercheck` read a P6 header's
   maxval and then read the pixels as bytes regardless, so the 16-bit ppm `magick source.png out.ppm`
   writes for a 16-bit png was consumed as an 8-bit one — half the picture, high and low bytes
