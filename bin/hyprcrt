@@ -261,7 +261,7 @@ PY
     # the link install made, not a link or file of the user's own
     [ "$(readlink "$HOME/.local/bin/hyprcrt" 2>/dev/null)" = "$root/bin/hyprcrt" ] && rm -f "$HOME/.local/bin/hyprcrt"
     if [ "$live" = 1 ]; then echo "hyprcrt: uninstalled; the filter is off in this session (plugin unloaded, shader cleared)"; else echo "hyprcrt: uninstalled"; fi
-    [ ! -f /etc/pacman.d/hooks/hyprcrt-rebuild.hook ] || echo "  the pacman hook needs root: sudo rm /etc/pacman.d/hooks/hyprcrt-rebuild.hook"
+    [ ! -f /etc/pacman.d/hooks/hyprcrt-rebuild.hook ] || echo "  the pacman hook is root-owned, remove it as root: rm /etc/pacman.d/hooks/hyprcrt-rebuild.hook"
     case "$root" in
         */omarchy/plugins/*)
             # the bar widget in this tree would recreate the state directory, so it goes too
