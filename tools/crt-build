@@ -79,7 +79,7 @@ fi
 
 if [ "$got" = 0 ]; then
     [ -d "$root/plugin/src" ] || die "plugin sources not found under $root (use --source <repo>)"
-    for t in g++ make pkg-config; do command -v "$t" >/dev/null || die "$t is required (pacman -S base-devel)"; done
+    for t in g++ make pkg-config; do command -v "$t" >/dev/null || die "$t is required (the base-devel package group)"; done
     pkg-config --exists hyprland || die "Hyprland headers not found (pkg-config hyprland). On Arch they ship with the hyprland package."
     echo "crt-build: building hyprcrt $srcver for Hyprland ${hdr:0:12}"
     make -C "$root/plugin" clean >/dev/null

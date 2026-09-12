@@ -40,7 +40,7 @@ install-test: plugin
 	tests/run-install-test.sh
 
 shell:
-	@command -v shellcheck >/dev/null || { echo "gate: shellcheck is not installed (sudo pacman -S shellcheck)"; exit 1; }
+	@command -v shellcheck >/dev/null || { echo "gate: shellcheck is not installed (the shellcheck package)"; exit 1; }
 	shellcheck -S warning -e SC1091,SC2016 $(SH_FILES)
 
 lua:
