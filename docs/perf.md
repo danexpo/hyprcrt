@@ -19,20 +19,25 @@ Mesa 26.2.1) in every row, the 4K 3-pass row excepted (0.568 → 0.546 ms).
 
 Frame budget: 16.7 ms at 60 Hz, 6.9 ms at 144 Hz.
 
-## GPU cost, inside the compositor (plugin timer query, nested 1600×900 session)
+## GPU cost, inside the compositor (plugin timer query, nested session)
 
-Measured 2026-09-05 (Omarchy 4.0.2, Mesa 26.2.1); not re-run with the table above.
+Re-measured 2026-09-11 (Omarchy 4.0.3, Hyprland 0.56.2, Mesa 26.2.2) via
+`tests/run-nested.sh all <preset> 2` and `hyprctl -i <sig> crt status`. The nested window's size is
+not pinned by the harness (it opens at whatever size the host gives it, here 1357×1102, against the
+2026-09-05 note's 1600×900); read the numbers as an order of magnitude, not a fixed-resolution
+comparison. Within the same range as the 2026-09-05 numbers once that difference is accounted for.
 
 `plugin:crt:stats = true` makes the plugin wrap its chain in a `GL_TIME_ELAPSED_EXT` query;
 `hyprctl crt status` reports it per monitor.
 
-| Preset, pitch 2 at 1600×900 | GPU ms per frame |
+| Preset, pitch 2 (nested, ~1357×1102) | GPU ms per frame |
 |---|---|
-| Monitor (grille, lines 3, glow 2) | 0.09–0.23 |
-| Television (slot, lines 2, glow 3, glass) | 0.12 |
+| Monitor (grille, lines 3, glow 2) | 0.11–0.28 |
+| Television (slot, lines 2, glow 3, glass) | 0.32–0.38 |
 
-At pitch 2 the glow/halation passes run at 800×450, so the chain is cheaper than the 1:1 benchmark.
-Scaling by pixel count, the 3440×1440 desktop at pitch 1 with `halo_half` lands at about 0.5 ms.
+At pitch 2 the glow/halation passes run at a quarter resolution, so the chain is cheaper than the
+1:1 benchmark. Scaling by pixel count, the 3440×1440 desktop at pitch 1 with `halo_half` lands at
+about 0.5 ms.
 
 ## Latency
 

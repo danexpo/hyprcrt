@@ -7,6 +7,7 @@ defaults that tell text from pictures, and install paths beyond Omarchy.
 
 ### Added
 - `make bench`: the offscreen GPU cost table in `docs/perf.md`, re-measured 2026-09-11 (Omarchy 4.0.3, Mesa 26.2.2).
+- `docs/perf.md`'s in-compositor GPU timer table, re-measured 2026-09-11 against a fresh nested session (was dated 2026-09-05); its resolution claim is now described as not pinned by the harness rather than a fixed 1600×900.
 - Prebuilt plugin: CI publishes `hyprcrt-<hyprland commit>.so` to a rolling GitHub release;
   `hyprcrt install` / `tools/crt-fetch` download and verify the one matching the installed Hyprland,
   and compile only when none exists (`hyprcrt build --build` forces a local compile).
